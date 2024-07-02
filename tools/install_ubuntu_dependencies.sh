@@ -53,9 +53,9 @@ function install_ubuntu_common_requirements() {
     ocl-icd-libopencl1 \
     ocl-icd-opencl-dev \
     portaudio19-dev \
+    qml-module-qtquick2 \
     qtmultimedia5-dev \
-    qtlocation5-dev \
-    qtpositioning5-dev \
+    qtdeclarative5-dev \
     qttools5-dev-tools \
     libqt5svg5-dev \
     libqt5serialbus5-dev  \
@@ -94,7 +94,7 @@ function install_ubuntu_lts_latest_requirements() {
     qt5-qmake \
     qtbase5-dev-tools \
     python3-dev \
-    tk-dev
+    python3-venv
 }
 
 # Install Ubuntu 20.04 packages
