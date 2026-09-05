@@ -73,7 +73,8 @@ class HeadingFeedback:
     self.last_measurement_time = self.last_pscm_time = None
     self.backoff_active = False
     self.diagnostics = {'heading_bias': 0., 'feedback_status': status, 'feedback_reference_time': None,
-                        'feedback_reference_curvature': None, 'feedback_yaw_error': None, 'feedback_backoff_active': False}
+                        'feedback_reference_curvature': None, 'feedback_yaw_error': None,
+                        'feedback_backoff_active': False, 'feedback_recovery_active': False}
 
   def update(self, base, desired, *, yaw_rate, speed, now, measurement_time, dt, previous_command, heading_horizon, driver_override, pscm_status):
     reason = ('missing_pscm' if pscm_status is None else pscm_status.invalid_reason(now))
@@ -99,6 +100,7 @@ class HeadingFeedback:
       self.history.popleft()
 
     status = 'no_new_measurement'
+    recovery_active = False
     reference_time = reference_curvature = yaw_error = None
     if measurement_time != self.last_measurement_time:
       self.backoff_active = False
@@ -122,11 +124,20 @@ class HeadingFeedback:
         # measured turning must also exceed the current selected action.
         current_yaw_error = speed * desired - yaw_rate
         backoff = constrained and yaw_error * base < 0. and current_yaw_error * base < 0. and heading_before * base > 0.
-        if constrained and not backoff:
+        recovering = (releasing and pscm_status.limit < 2 and self.bias * base < 0. and
+                      desired * base > 0. and reference_curvature * base > 0. and yaw_error * base > 0. and current_yaw_error * base > 0.)
+        if constrained and not (backoff or recovering):
           status = 'release' if releasing else 'pscm_limit'
         else:
+          bias_before = self.bias
           increment = self.tuning.feedback_gain * yaw_error * measurement_dt
-          if backoff:
+          if recovering:
+            # Once both references show a shortfall, unwind a previous opposing
+            # correction during release. Use the current, smaller deficit and
+            # stop at zero bias; recovery cannot create demand beyond the base.
+            increment = float(np.clip(self.tuning.feedback_gain * current_yaw_error * measurement_dt,
+                                      min(0., -self.bias), max(0., -self.bias)))
+          elif backoff:
             # A release/limit may still reduce an excessive same-direction
             # heading request. It cannot grow that request or cross through
             # zero. This does not identify the PSCM's limiting mechanism or
@@ -149,6 +160,9 @@ class HeadingFeedback:
           if backoff:
             self.backoff_active = True
             status = 'release_backoff' if releasing else 'pscm_backoff'
+          elif recovering and self.bias != bias_before:
+            recovery_active = True
+            status = 'release_recovery'
     self.bias = float(np.clip(self.bias, -.5 - base, .5 - base))
     target = float(np.clip(base + self.bias, -.5, .5))
     if self.backoff_active:
@@ -160,7 +174,7 @@ class HeadingFeedback:
       target = float(np.clip(target, -ceiling if base < 0. else 0., ceiling if base > 0. else 0.))
     self.diagnostics = {'heading_bias': self.bias, 'feedback_status': status, 'feedback_reference_time': reference_time,
                         'feedback_reference_curvature': reference_curvature, 'feedback_yaw_error': yaw_error,
-                        'feedback_backoff_active': self.backoff_active}
+                        'feedback_backoff_active': self.backoff_active, 'feedback_recovery_active': recovery_active}
     return target
 
 
@@ -244,7 +258,7 @@ class FordVirtualAngleController:
     self.last_measurement_time = None
     self.curvature_history = deque()
     self.offset_request = self.heading_request = 0.0
-    self.diagnostics = {'status': 'inactive', 'hypothesis': 'model-pose-c0-c1-feedback-v6', 'command': (0., 0., 0., 0.),
+    self.diagnostics = {'status': 'inactive', 'hypothesis': 'model-pose-c0-c1-feedback-v7', 'command': (0., 0., 0., 0.),
                         **self.feedback.diagnostics}
 
   def update(self, model, desired_curvature, *, yaw_rate, speed, now, measurement_time, model_time, reference_time,
@@ -313,7 +327,7 @@ class FordVirtualAngleController:
     offset = _packed(self.offset_request, .01, -5.12)
     heading = _packed(self.heading_request, .0005, -.5)
     self.command = FordPath(True, offset, heading, 0., 0.)
-    self.diagnostics = {'status': 'driver_override' if driver_override else 'active', 'hypothesis': 'model-pose-c0-c1-feedback-v6',
+    self.diagnostics = {'status': 'driver_override' if driver_override else 'active', 'hypothesis': 'model-pose-c0-c1-feedback-v7',
                         'desired_curvature': desired_curvature, 'offset_target': target_offset, 'heading_target': target_heading,
                         'model_offset_base': model_base.path_offset, 'model_heading_base': model_base.path_angle,
                         'curvature_offset_base': curvature_offset, 'curvature_heading_base': curvature_heading,

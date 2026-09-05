@@ -62,9 +62,10 @@ class TestFordControlsLogging(unittest.TestCase):
       self.assertEqual(record['reference_service'], 'modelV2')
       self.assertEqual(record['reference_mono_time'], 123456789)
       self.assertEqual(record['status'], controller.diagnostics['status'])
-      self.assertEqual(record['hypothesis'], 'model-pose-c0-c1-feedback-v6')
+      self.assertEqual(record['hypothesis'], 'model-pose-c0-c1-feedback-v7')
       self.assertEqual(record['command'], list(controller.diagnostics['command']))
       self.assertIs(record['feedback_backoff_active'], False)
+      self.assertIs(record['feedback_recovery_active'], False)
       if active and valid:
         self.assertEqual(record['response_delay'], 0.2)
         self.assertEqual(record['desired_curvature'], 0.01)
@@ -122,6 +123,27 @@ class TestFordControlsLogging(unittest.TestCase):
       if backoff:
         # The output ceiling is observable separately from the stored integral.
         self.assertLess(record['heading_target'], record['heading_base'] + record['heading_bias'])
+
+  def test_periodic_diagnostics_log_recovery_only_on_accepted_fresh_updates(self):
+    for limit in (0, 2):
+      with self.subTest(pscm_limit=limit):
+        controller = FordVirtualAngleController()
+        for i in range(50):
+          now = 1. + i * .01
+          controller.update(circle(.02), .02, yaw_rate=.3, speed=10., now=now, measurement_time=now,
+                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
+        self.assertLess(controller.diagnostics['heading_bias'], 0.)
+        first_status = 'release_recovery' if limit == 0 else 'release'
+        for now, expected_status in ((1.5, first_status), (1.51, 'no_new_measurement')):
+          controller.update(circle(.02), .01, yaw_rate=.03, speed=10., now=now, measurement_time=1.5,
+                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, limit, 2, False))
+          controls = SimpleNamespace(ford_path_controller=controller, desired_curvature=.01, curvature=.003,
+                                     sm=SimpleNamespace(logMonoTime={'modelV2': int(now * 1e9), 'carState': 1_500_000_000}))
+          record = self.emit_controls_event('Ford C2-free path tracking', controls)
+          self.assertEqual(record['feedback_status'], expected_status)
+          self.assertIs(record['feedback_recovery_active'], limit == 0 and now == 1.5)
+          self.assertIs(record['feedback_backoff_active'], False)
+          self.assertEqual(record['heading_bias'], controller.diagnostics['heading_bias'])
 
   def test_actual_ford_branch_uses_selected_reference_and_disables_invalid_output(self):
     source_path = Path(__file__).resolve().parents[1] / 'controlsd.py'

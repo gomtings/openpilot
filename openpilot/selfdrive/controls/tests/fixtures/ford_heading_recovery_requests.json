@@ -1,0 +1,40 @@
+{
+  "description": "Signal-only v6 turn-exit recovery regression; no location, device identity, or predicted new vehicle response.",
+  "recorded_controller_revision": "61dac4977bf9c36504398e8a4959dfed79cf6f05",
+  "baseline_revision": "61dac4977bf9c36504398e8a4959dfed79cf6f05",
+  "response_delay": 0.20000000298023224,
+  "samples": 9134,
+  "models": 1843,
+  "fixture_sha256": "41d5e3efcee03a9e02fcaf7bf456c050c6a671a5b7f7fc9706ddf4d27bad71b8",
+  "windows": [
+    {
+      "name": "overturn_then_underturn",
+      "range_s": [
+        19.99615067150053,
+        29.48070058550053
+      ],
+      "samples": 521
+    },
+    {
+      "name": "well_tracked_curve_a",
+      "range_s": [
+        56.19474309950053,
+        63.68808603150053
+      ],
+      "samples": 729
+    },
+    {
+      "name": "well_tracked_curve_b",
+      "range_s": [
+        101.19780691350051,
+        116.33885445450052
+      ],
+      "samples": 810
+    }
+  ],
+  "selection": "One previously identified overturn-then-underturn event and two previously reported well-tracked curves; selected before recovery implementation.",
+  "mask": "Whole t-0.5 through t+0.65 interval active, valid, fresh, unpressed, raw driver torque magnitude <=1 Nm; requested |curvature|*speed\u00b2 >=.5 m/s\u00b2.",
+  "timing": "Exact consumed model publication; causal CAN/PSCM at estimated control computation time. Subtract observed median computation-to-publication delay; unsampled tick timing remains approximate.",
+  "context": "At least 20 seconds prior context or the available start, extended before the latest observed reset. Overlapping episodes are merged.",
+  "coordinates": "Times are local elapsed seconds; models contain only relative position.x/y and orientation.z arrays."
+}

@@ -1,15 +1,18 @@
 # Ford C2-free model-pose tracking with measured feedback
 
-Hypothesis `model-pose-c0-c1-feedback-v6` restores the existing allocator's
-model-path C0/C1 demand for large turns when model geometry and selected
-curvature agree. The remaining selected curvature becomes C0/C1 centering
-and turn demand; C2/C3 stay zero. Selected desired curvature remains the
-measured-yaw feedback target, even when model geometry supplies the base.
+Hypothesis `model-pose-c0-c1-feedback-v7` retains v6's model-pose C0/C1 base
+and adds narrow recovery of an opposing C1 bias during release. C0, model
+geometry, blending, gains, rates and output bounds are unchanged. Recovery
+can remove retained opposing bias but cannot create bias beyond zero or
+relax the PSCM LimitReached growth restriction. C2/C3 remain zero, and
+selected desired curvature remains the measured-yaw feedback target.
 
 This is an experimental outer controller around the multivariable PSCM.
 Its geometry does not define a calibrated C0/C1-to-wheel mapping or an angle
 servo. Command replay cannot establish the truck's response, closed-loop
 stability, or an overshoot improvement.
+The v7 recovery change has offline validation only; its physical response
+is unproven.
 
 ## Evidence and scope
 
@@ -74,7 +77,7 @@ The existing pose encoder retains its quantization and field-allocation rules.
 The residual-curvature lift is geometric, not a claim of EPS equivalence to C2.
 
 The inherited pose encoder allocates heading overflow using its asymmetric
-limits (+0.5235/−0.5 rad), before v6 applies the symmetric final ±0.5 rad
+limits (+0.5235/−0.5 rad), before the symmetric final ±0.5 rad
 heading bound. On clipped tails, this can leave mirrored C0 requests differing
 by up to 0.0235 rad × 7 m = 0.1645 m. The favorable comparison anchors lie
 below that heading cap; full model-base odd symmetry is not claimed.
@@ -120,8 +123,26 @@ both the delayed and current selected yaw requests in the base's direction,
 and total heading must still have the base's sign. Exceeding only an older,
 smaller request during turn-in does not qualify. The accepted increment may
 only reduce that existing total toward zero; it cannot grow the request or
-carry it through zero. Other error directions remain frozen, and existing
-host field and slew limits still apply.
+carry it through zero. Existing host field and slew limits still apply.
+
+The new release-recovery exception requires fresh valid PSCM status with
+limit below 2, retained bias opposing the base, and both current and delayed
+requests aligned with that base. Measured turning must be below both requests
+in their direction. It then uses the current yaw deficit × the existing
+feedback gain × measurement interval to unwind only the opposing bias toward
+zero. The increment is clipped so recovery cannot cross zero bias or create
+demand beyond the existing base. Common host anti-windup still limits what
+can be accepted. All other constrained cases remain frozen; PSCM limit 2
+never permits this request-increasing recovery.
+The no-new-bias restriction applies only to `release_recovery`. Once release
+ends, ordinary eligible integration can add correction beyond the base as
+before; its existing limits and guards are unchanged.
+
+`release_recovery` and `feedback_recovery_active=true` indicate that the
+recovery branch actually changed bias on that update. If host anti-windup
+blocks the entire increment, the status remains `host_limit` and the flag is
+false. Recovery is evaluated only on fresh measurements; the flag is false
+on repeated-measurement updates and after reset.
 
 Diagnostics distinguish `release_backoff` and `pscm_backoff`; a release takes
 precedence when both conditions apply. While `feedback_backoff_active` is
@@ -169,9 +190,9 @@ Missing PSCM status disables feedback, not an otherwise valid base request.
 
 Vehicle → Ford → **C2-Free Path Tracking (Experimental)** retains the
 `FordVirtualAngleController` key, default-off setting and offroad/onroad cycle
-requirement. Enabled selects v6 on Ford CAN FD `FORD_F_150_LIGHTNING_MK1`
+requirement. Enabled selects v7 on Ford CAN FD `FORD_F_150_LIGHTNING_MK1`
 regardless of missing or different EPS firmware-query results. Other platforms
-retain their existing controller. V6 takes priority over PSCM Coefficient
+retain their existing controller. V7 takes priority over PSCM Coefficient
 Observer while selected; disabling and cycling offroad/onroad restores the
 previous selection. Controller selection does not force lateral engagement.
 
@@ -180,7 +201,7 @@ is not validation of other firmware. No live device setting is changed.
 
 ## Diagnostics and verification
 
-The 5 Hz `Ford C2-free path tracking` event keeps its name and identifies v6.
+The 5 Hz `Ford C2-free path tracking` event keeps its name and identifies v7.
 `model_offset_base` / `model_heading_base` report the already weighted and
 encoded model contribution; `curvature_offset_base` / `curvature_heading_base`
 report the residual-curvature contribution. `model_share` and `base_guard`
@@ -192,6 +213,11 @@ The event retains source timestamps, measured curvature/yaw, final commands,
 slew scales, feedback bias/status/history, raw torque and PSCM status/age.
 `feedback_backoff_active` records the persistent heading ceiling, including
 cycles whose feedback status is `no_new_measurement`.
+`feedback_recovery_active` records an accepted recovery increment on this
+update only; it does not persist between measurements.
+`feedback_yaw_error` retains its delayed-reference meaning. Recovery instead
+uses current error, reconstructed from logged `desired_curvature`,
+synchronized car-state speed and `yaw_rate`; those two errors can differ.
 During backoff, `heading_target` can be lower in the request direction than
 the bounded sum of `heading_base` and `heading_bias`, because the temporary
 ceiling is not part of the stored bias.
@@ -202,7 +228,9 @@ Validation must cover large recorded maneuvers, flat-model centering, both
 turn directions, model/action disagreement, share transitions, release and
 reversal, release/limit backoff without growth or zero crossing, status/driver
 resets, reference causality, bounds, slew and CAN packing with C2/C3 zero.
+Recovery checks cover both directions, stopping at zero bias, repeated
+measurements, current-and-delayed agreement, and rejection at PSCM limit 2.
 Old v3/v4 command-equality expectations do not define
-v6 success. Historical v5 replay results remain historical observations.
+v7 success. Historical v5/v6 replay results remain historical observations.
 Replay fixes recorded motion and planner outputs, so enabled vehicle logs
 are still required to assess tracking error, oscillation and interventions.
