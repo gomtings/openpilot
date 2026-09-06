@@ -55,6 +55,57 @@ class PscmStatus:
     return None
 
 
+class ReleaseGuard:
+  """Keep pose growth from defeating a measured turn release.
+
+  Request history is independent of the integral: driver input resets
+  correction authority, but does not erase valid requests already sent.
+  Coefficient signs describe path geometry, not motor effort. Opposing path
+  terms stay available; only growth in the requested direction is limited.
+  """
+  def __init__(self, delay):
+    self.delay = delay
+    self.history = deque()
+    self.last_measurement_time = None
+    self.last_pscm_time = None
+    self.direction = 0.
+    self.active = False
+    self.reference_curvature = None
+
+  def update(self, desired, *, yaw_rate, speed, now, measurement_time, heading_horizon, driver_override, pscm_status):
+    self.history.append((now, desired))
+    while len(self.history) > 2 and self.history[1][0] < now - self.delay - .25:
+      self.history.popleft()
+    direction = float(np.sign(desired))
+    status_reason = pscm_status.invalid_reason(now) if pscm_status is not None else 'missing_pscm'
+    fresh_status = (status_reason in (None, 'unavailable_pscm') and
+                    (self.last_pscm_time is None or pscm_status.timestamp >= self.last_pscm_time))
+    available = (not driver_override and speed >= FEEDBACK_MIN_SPEED and direction != 0. and
+                 fresh_status and status_reason is None and pscm_status.limit < 3)
+    if fresh_status:
+      self.last_pscm_time = pscm_status.timestamp
+    if not available or direction != self.direction:
+      self.active = False
+    self.direction = direction
+    if measurement_time != self.last_measurement_time:
+      self.last_measurement_time = measurement_time
+      reference = next((sample for sample in reversed(self.history) if sample[0] <= measurement_time - self.delay), None)
+      self.reference_curvature = reference[1] if reference is not None else None
+      self.active = False
+      if available and reference is not None:
+        delayed = reference[1]
+        releasing = (abs(delayed) - abs(desired)) * heading_horizon > HEADING_RESOLUTION
+        self.active = (delayed * desired > 0. and releasing and
+                       (yaw_rate - speed * desired) * direction > 0. and
+                       (yaw_rate - speed * delayed) * direction > 0.)
+    return self.active
+
+  def limit(self, target, previous):
+    if self.active and target * self.direction > 0.:
+      return self.direction * min(target * self.direction, max(previous * self.direction, 0.))
+    return target
+
+
 class HeadingFeedback:
   """Bound a heading correction using measured yaw error, not an EPS gain fit.
 
@@ -68,13 +119,18 @@ class HeadingFeedback:
 
   def reset(self, status='inactive'):
     self.history = deque()
+    self.response_history = deque()
     self.bias = 0.
     self.previous_base = None
     self.last_measurement_time = self.last_pscm_time = None
     self.backoff_active = False
+    self.release_command = self.release_reference = 0.
+    self.release_quiet_since = None
     self.diagnostics = {'heading_bias': 0., 'feedback_status': status, 'feedback_reference_time': None,
                         'feedback_reference_curvature': None, 'feedback_yaw_error': None,
-                        'feedback_backoff_active': False, 'feedback_recovery_active': False}
+                        'feedback_backoff_active': False, 'feedback_recovery_active': False,
+                        'feedback_release_tracking_active': False, 'feedback_release_ceiling': None,
+                        'feedback_curvature_delta': None}
 
   def update(self, base, desired, *, yaw_rate, speed, now, measurement_time, dt, previous_command, heading_horizon, driver_override, pscm_status):
     reason = ('missing_pscm' if pscm_status is None else pscm_status.invalid_reason(now))
@@ -100,13 +156,20 @@ class HeadingFeedback:
       self.history.popleft()
 
     status = 'no_new_measurement'
-    recovery_active = False
+    recovery_active = release_tracking_active = False
+    release_ceiling = curvature_delta = None
     reference_time = reference_curvature = yaw_error = None
     if measurement_time != self.last_measurement_time:
       self.backoff_active = False
       measurement_dt = 0. if self.last_measurement_time is None else measurement_time - self.last_measurement_time
       self.last_measurement_time = measurement_time
       target_time = measurement_time - self.delay
+      self.response_history.append((measurement_time, yaw_rate / speed))
+      while len(self.response_history) > 2 and self.response_history[1][0] < target_time - .1:
+        self.response_history.popleft()
+      prior_response = next((sample for sample in reversed(self.response_history) if sample[0] <= target_time), None)
+      if prior_response is not None:
+        curvature_delta = yaw_rate / speed - prior_response[1]
       # Use the command actually held at the historical instant. Interpolating
       # toward a later publication would compare against a different request.
       reference = next((sample for sample in reversed(self.history) if sample[0] <= target_time), None)
@@ -118,6 +181,21 @@ class HeadingFeedback:
         reference_time, reference_curvature = reference
         yaw_error = speed * reference_curvature - yaw_rate
         releasing = reference_curvature * desired <= 0. or (abs(reference_curvature) - abs(desired)) * heading_horizon > HEADING_RESOLUTION
+        # A brief quantization-level pause must not acquire a larger ceiling.
+        # A full response interval without release ends the previous episode.
+        if desired * base <= 0.:
+          self.release_command = self.release_reference = 0.
+          self.release_quiet_since = None
+        elif releasing:
+          self.release_quiet_since = None
+          if self.release_reference == 0. and reference_curvature * desired > 0. and desired * base > 0.:
+            self.release_reference = abs(reference_curvature)
+            self.release_command = max(0., math.copysign(1., base) * previous_command)
+        else:
+          if self.release_quiet_since is None:
+            self.release_quiet_since = measurement_time
+          if measurement_time - self.release_quiet_since >= self.delay:
+            self.release_command = self.release_reference = 0.
         constrained = releasing or pscm_status.limit >= 2
         heading_before = base + self.bias
         # Do not brake turn-in merely for exceeding an older, smaller request:
@@ -126,7 +204,17 @@ class HeadingFeedback:
         backoff = constrained and yaw_error * base < 0. and current_yaw_error * base < 0. and heading_before * base > 0.
         recovering = (releasing and pscm_status.limit < 2 and self.bias * base < 0. and
                       desired * base > 0. and reference_curvature * base > 0. and yaw_error * base > 0. and current_yaw_error * base > 0.)
-        if constrained and not (backoff or recovering):
+        tracking_release = (releasing and pscm_status.limit < 2 and self.bias * base >= 0. and
+                            desired * base > 0. and reference_curvature * base > 0. and yaw_error * base > 0. and current_yaw_error * base > 0. and
+                            curvature_delta is not None and math.copysign(1., base) * curvature_delta * heading_horizon <= HEADING_RESOLUTION and
+                            self.release_reference > 0.)
+        if tracking_release:
+          # Taper only extra correction; preserve the large-turn model base.
+          # The bound comes from earlier commands, not an EPS gain fit.
+          remaining = min(1., abs(desired) / self.release_reference)
+          headroom = max(0., self.release_command - abs(base)) * remaining
+          release_ceiling = abs(base) + headroom
+        if constrained and not (backoff or recovering or tracking_release):
           status = 'release' if releasing else 'pscm_limit'
         else:
           bias_before = self.bias
@@ -137,6 +225,11 @@ class HeadingFeedback:
             # stop at zero bias; recovery cannot create demand beyond the base.
             increment = float(np.clip(self.tuning.feedback_gain * current_yaw_error * measurement_dt,
                                       min(0., -self.bias), max(0., -self.bias)))
+          elif tracking_release:
+            # Include the ceiling in integral admission, so no hidden bias
+            # accumulates behind an unreachable output request.
+            available = max(0., release_ceiling - math.copysign(1., base) * heading_before)
+            increment = math.copysign(1., base) * min(abs(self.tuning.feedback_gain * current_yaw_error * measurement_dt), available)
           elif backoff:
             # A release/limit may still reduce an excessive same-direction
             # heading request. It cannot grow that request or cross through
@@ -163,6 +256,9 @@ class HeadingFeedback:
           elif recovering and self.bias != bias_before:
             recovery_active = True
             status = 'release_recovery'
+          elif tracking_release:
+            release_tracking_active = self.bias != bias_before
+            status = 'release_tracking' if release_tracking_active else 'release'
     self.bias = float(np.clip(self.bias, -.5 - base, .5 - base))
     target = float(np.clip(base + self.bias, -.5, .5))
     if self.backoff_active:
@@ -174,7 +270,9 @@ class HeadingFeedback:
       target = float(np.clip(target, -ceiling if base < 0. else 0., ceiling if base > 0. else 0.))
     self.diagnostics = {'heading_bias': self.bias, 'feedback_status': status, 'feedback_reference_time': reference_time,
                         'feedback_reference_curvature': reference_curvature, 'feedback_yaw_error': yaw_error,
-                        'feedback_backoff_active': self.backoff_active, 'feedback_recovery_active': recovery_active}
+                        'feedback_backoff_active': self.backoff_active, 'feedback_recovery_active': recovery_active,
+                        'feedback_release_tracking_active': release_tracking_active, 'feedback_release_ceiling': release_ceiling,
+                        'feedback_curvature_delta': curvature_delta}
     return target
 
 
@@ -253,12 +351,15 @@ class FordVirtualAngleController:
   def reset(self):
     self.reference.reset()
     self.feedback.reset()
+    self.release_guard = ReleaseGuard(self.delay)
     self.command = FordPath()
     self.last_time = None
     self.last_measurement_time = None
     self.curvature_history = deque()
     self.offset_request = self.heading_request = 0.0
-    self.diagnostics = {'status': 'inactive', 'hypothesis': 'model-pose-c0-c1-feedback-v7', 'command': (0., 0., 0., 0.),
+    self.diagnostics = {'status': 'inactive', 'hypothesis': 'model-pose-c0-c1-feedback-v8', 'command': (0., 0., 0., 0.),
+                        'release_guard_active': False, 'release_guard_reference_curvature': None,
+                        'offset_target_unguarded': 0., 'heading_target_unguarded': 0.,
                         **self.feedback.diagnostics}
 
   def update(self, model, desired_curvature, *, yaw_rate, speed, now, measurement_time, model_time, reference_time,
@@ -317,6 +418,11 @@ class FordVirtualAngleController:
     target_heading = self.feedback.update(base_heading, desired_curvature, yaw_rate=yaw_rate, speed=speed, now=now,
                                           measurement_time=measurement_time, dt=dt, previous_command=self.heading_request,
                                           heading_horizon=heading_horizon, driver_override=driver_override, pscm_status=pscm_status)
+    self.release_guard.update(desired_curvature, yaw_rate=yaw_rate, speed=speed, now=now, measurement_time=measurement_time,
+                              heading_horizon=heading_horizon, driver_override=driver_override, pscm_status=pscm_status)
+    unguarded_offset, unguarded_heading = target_offset, target_heading
+    target_offset = self.release_guard.limit(target_offset, self.offset_request)
+    target_heading = self.release_guard.limit(target_heading, self.heading_request)
     delta_offset = target_offset - self.offset_request
     delta_heading = target_heading - self.heading_request
     # A slow C1 transition must not hold a C0 correction after action releases it.
@@ -327,8 +433,11 @@ class FordVirtualAngleController:
     offset = _packed(self.offset_request, .01, -5.12)
     heading = _packed(self.heading_request, .0005, -.5)
     self.command = FordPath(True, offset, heading, 0., 0.)
-    self.diagnostics = {'status': 'driver_override' if driver_override else 'active', 'hypothesis': 'model-pose-c0-c1-feedback-v7',
+    self.diagnostics = {'status': 'driver_override' if driver_override else 'active', 'hypothesis': 'model-pose-c0-c1-feedback-v8',
                         'desired_curvature': desired_curvature, 'offset_target': target_offset, 'heading_target': target_heading,
+                        'offset_target_unguarded': unguarded_offset, 'heading_target_unguarded': unguarded_heading,
+                        'release_guard_active': self.release_guard.active,
+                        'release_guard_reference_curvature': self.release_guard.reference_curvature,
                         'model_offset_base': model_base.path_offset, 'model_heading_base': model_base.path_angle,
                         'curvature_offset_base': curvature_offset, 'curvature_heading_base': curvature_heading,
                         'model_share': model_share, 'base_guard': base_guard,

@@ -1,0 +1,156 @@
+{
+  "description": "Anonymous recorded-input turn-exit regression fixture; command construction only, not simulated vehicle response.",
+  "baseline_revision": "dfcfddb91ce2409511f5b2dbce25d06d5056b3d6",
+  "baseline_hypothesis": "model-pose-c0-c1-feedback-v7",
+  "baseline_source_hashes": {
+    "controller_sha256": "4951a6352d89fcd66277bbfe682bd22e935a31b5a4db33e617ad21189b6705fd",
+    "allocator_sha256": "383538fc7cdae3bc28dffb71fe12ac5f3f9866ffbe6adfb7457f3593e9fc903a"
+  },
+  "fixture_sha256": "87a030c309061b7dc218715d05440c2077e465a8138079b46e8e8cee94201e54",
+  "source_fixture_sha256": "d476110b83dc628ffbd094220e464d6d3114b709bda2977813c3217964d41086",
+  "response_delay": 0.20000000298023224,
+  "publication_latency_estimate_s": 0.0015483515003040793,
+  "samples": 15273,
+  "model_count": 3078,
+  "evidence_samples": 4879,
+  "context_policy": "At least twenty seconds prior context, extended before the last observed reset. Overlapping intervals are merged.",
+  "provenance": "Selected from a recorded drive running the pinned baseline; request, model, driver and PSCM observations stay fixed during replay.",
+  "baseline_policy": "Stored commands, validity and bias exactly match the complete baseline replay on evidence samples. Context outside evidence initializes state and is not an exact-output target.",
+  "compact_full_baseline_evidence_parity": {
+    "commands": {
+      "exact": true,
+      "max_difference": 0.0
+    },
+    "valid": {
+      "exact": true,
+      "max_difference": 0.0
+    },
+    "heading_bias": {
+      "exact": true,
+      "max_difference": 0.0
+    }
+  },
+  "measurement_policy": "Controller computation time is estimated from publication time using the recorded median latency; exact vehicle motion under changed commands is unknown.",
+  "clean_policy": "Every sample from request time minus 0.5 s through plus 0.65 s is active, valid, fresh, unpressed and within 1 Nm raw driver torque. Demand is absolute desired curvature times current speed squared; substantial means at least 0.5 m/s2.",
+  "driver_policy": "All replay inputs retain driver interference; only comparison metrics use the clean mask. History-reset failures intentionally retain nearby driver context.",
+  "coordinates": "Elapsed seconds shifted to the first fixture control cycle; model x/y/heading are vehicle-relative, not global position.",
+  "retained_fields": [
+    "t",
+    "episode",
+    "model_index",
+    "models",
+    "desired_curvature",
+    "yaw_rate",
+    "speed",
+    "measurement_time",
+    "model_time",
+    "reference_time",
+    "active",
+    "valid",
+    "pressed",
+    "steering_torque",
+    "pscm_timestamp",
+    "pscm_valid",
+    "pscm_lateral_state",
+    "pscm_limit",
+    "pscm_capability",
+    "pscm_denied",
+    "clean_rawtorque",
+    "demand",
+    "window_masks",
+    "evidence",
+    "baseline_commands",
+    "baseline_valid",
+    "baseline_heading_base",
+    "baseline_heading_target",
+    "baseline_heading_bias",
+    "baseline_feedback_yaw_error",
+    "baseline_feedback_reference_curvature",
+    "baseline_status",
+    "baseline_offset_target"
+  ],
+  "omitted_data": "No route/device identifiers, VIN, GPS, private paths, raw wheel angle, wheel rate, EPS torque, or absolute clock origins.",
+  "baseline_status_meaning": "feedback_status from the pinned baseline",
+  "windows": [
+    {
+      "name": "good_curve_a",
+      "role": "comparison",
+      "range_s": [
+        20.0002130975003,
+        25.0002130975003
+      ],
+      "samples": 496,
+      "clean_substantial_samples": 259
+    },
+    {
+      "name": "first_reversal",
+      "role": "reversal",
+      "range_s": [
+        83.0002130975003,
+        92.7002130975003
+      ],
+      "samples": 964,
+      "clean_substantial_samples": 167
+    },
+    {
+      "name": "good_curve_b",
+      "role": "comparison",
+      "range_s": [
+        121.0002130975003,
+        128.0002130975003
+      ],
+      "samples": 695,
+      "clean_substantial_samples": 308
+    },
+    {
+      "name": "second_reversal",
+      "role": "reversal",
+      "range_s": [
+        133.5002130975003,
+        138.9002130975003
+      ],
+      "samples": 537,
+      "clean_substantial_samples": 191
+    },
+    {
+      "name": "large_turn_driver_context_a",
+      "role": "driver_context",
+      "range_s": [
+        150.0002130975003,
+        157.0002130975003
+      ],
+      "samples": 695,
+      "clean_substantial_samples": 0
+    },
+    {
+      "name": "over_growth",
+      "role": "over_response",
+      "range_s": [
+        182.0002130975003,
+        191.0002130975003
+      ],
+      "samples": 897,
+      "clean_substantial_samples": 66
+    },
+    {
+      "name": "large_turn_driver_context_b",
+      "role": "driver_context",
+      "range_s": [
+        199.0002130975003,
+        205.0002130975003
+      ],
+      "samples": 595,
+      "clean_substantial_samples": 281
+    },
+    {
+      "name": "zero_bias_release",
+      "role": "under_response",
+      "range_s": [
+        202.0002130975003,
+        205.0002130975003
+      ],
+      "samples": 297,
+      "clean_substantial_samples": 279
+    }
+  ]
+}

@@ -45,12 +45,14 @@ class TestFordHeadingRecovery(unittest.TestCase):
         self.assertAlmostEqual(feedback.bias, 0.)
         self.assertAlmostEqual(sign * target, .2)
         self.assertEqual(feedback.diagnostics['feedback_status'], 'release_recovery')
-        # The request is still releasing, but zero bias cannot become boost.
+        # The recovery update stops exactly at zero. A later new observation
+        # can enter the separately bounded release-tracking policy.
         target = update(feedback, sign, .66, yaw=0.)
-        self.assertAlmostEqual(feedback.bias, 0.)
-        self.assertAlmostEqual(sign * target, .2)
-        self.assertEqual(feedback.diagnostics['feedback_status'], 'release')
+        self.assertGreater(sign * feedback.bias, 0.)
+        self.assertLessEqual(sign * target, feedback.diagnostics['feedback_release_ceiling'])
+        self.assertEqual(feedback.diagnostics['feedback_status'], 'release_tracking')
         self.assertFalse(feedback.diagnostics['feedback_recovery_active'])
+        self.assertTrue(feedback.diagnostics['feedback_release_tracking_active'])
 
   def test_opposing_delayed_request_blocks_recovery_even_with_both_positive_errors(self):
     for sign in (-1, 1):
@@ -88,14 +90,15 @@ class TestFordHeadingRecovery(unittest.TestCase):
           self.assertAlmostEqual(feedback.bias, retained)
           self.assertNotEqual(feedback.diagnostics['feedback_status'], 'release_recovery')
 
-  def test_release_does_not_recover_a_same_direction_bias(self):
+  def test_same_direction_bias_uses_release_tracking_instead_of_opposing_bias_recovery(self):
     for sign in (-1, 1):
       feedback, previous = acquired_correction(sign, yaw=.2)
       retained = feedback.bias * .2 / .3
       self.assertGreater(sign * retained, 0.)
       update(feedback, sign, .6, previous=previous)
-      self.assertAlmostEqual(feedback.bias, retained)
-      self.assertEqual(feedback.diagnostics['feedback_status'], 'release')
+      self.assertGreater(sign * feedback.bias, sign * retained)
+      self.assertEqual(feedback.diagnostics['feedback_status'], 'release_tracking')
+      self.assertFalse(feedback.diagnostics['feedback_recovery_active'])
 
   def test_fresh_recovery_clears_backoff_without_reusing_measurements(self):
     for sign in (-1, 1):

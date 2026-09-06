@@ -1,18 +1,18 @@
 # Ford C2-free model-pose tracking with measured feedback
 
-Hypothesis `model-pose-c0-c1-feedback-v7` retains v6's model-pose C0/C1 base
-and adds narrow recovery of an opposing C1 bias during release. C0, model
-geometry, blending, gains, rates and output bounds are unchanged. Recovery
-can remove retained opposing bias but cannot create bias beyond zero or
-relax the PSCM LimitReached growth restriction. C2/C3 remain zero, and
-selected desired curvature remains the measured-yaw feedback target.
+Hypothesis `model-pose-c0-c1-feedback-v8` retains the model-pose C0/C1 base
+and adds two guarded release policies. When measured turning exceeds both
+current and delayed requests, a separate output guard prevents same-direction
+C0/C1 growth, including while feedback history rebuilds after driver input.
+When turning instead falls below both requests and is no longer increasing,
+bounded C1 tracking can use remaining release-entry command headroom.
+Existing opposing-bias recovery still stops at zero bias. Geometry, blending,
+feedback gain, slew rates and field limits are unchanged; C2/C3 remain zero.
 
 This is an experimental outer controller around the multivariable PSCM.
 Its geometry does not define a calibrated C0/C1-to-wheel mapping or an angle
-servo. Command replay cannot establish the truck's response, closed-loop
-stability, or an overshoot improvement.
-The v7 recovery change has offline validation only; its physical response
-is unproven.
+servo. V8 has offline validation only. Command replay cannot establish the
+truck's response, closed-loop stability, or an overshoot improvement.
 
 ## Evidence and scope
 
@@ -34,6 +34,16 @@ for the existing model-pose construction, not validation of v5 or v6.
 V6 reuses that construction while replacing its remaining C2 request with
 C0/C1 geometry. Removing C2 changes the request received by the PSCM, so
 matching large C0/C1 commands does not guarantee matching vehicle motion.
+
+Route8a ran v6 and was reported as the best drive. Route8e ran v7 throughout
+with the experiment enabled; it includes entry lag and excessive turning
+while requests release. Fixed-input v6/v7 replay produced identical commands
+in the main reversal and over-response examples, so the v7 recovery change
+does not directly explain their command behavior. In the over-response
+example, model C0/C1 grew while selected curvature fell and driver resets
+repeatedly removed feedback history. Another exit remained deficient after
+opposing bias reached zero. These observations motivate the v8 guards; they
+do not isolate an EPS transfer function or demonstrate the proposed response.
 
 ## Base request
 
@@ -63,7 +73,7 @@ L0 = max(8 m, speed × 1 s)
 L1 = max(7 m, speed × 1 s)
 curvature_C0 = 0.5 × remaining_curvature × L0²
 curvature_C1 = remaining_curvature × L1
-C0_target = clip(model_pair.C0 + curvature_C0, ±5.11 m)
+C0_base = clip(model_pair.C0 + curvature_C0, ±5.11 m)
 C1_base = clip(model_pair.C1 + curvature_C1, ±0.5 rad)
 ```
 
@@ -125,18 +135,20 @@ smaller request during turn-in does not qualify. The accepted increment may
 only reduce that existing total toward zero; it cannot grow the request or
 carry it through zero. Existing host field and slew limits still apply.
 
-The new release-recovery exception requires fresh valid PSCM status with
+The existing release-recovery exception requires fresh valid PSCM status with
 limit below 2, retained bias opposing the base, and both current and delayed
 requests aligned with that base. Measured turning must be below both requests
 in their direction. It then uses the current yaw deficit × the existing
 feedback gain × measurement interval to unwind only the opposing bias toward
 zero. The increment is clipped so recovery cannot cross zero bias or create
 demand beyond the existing base. Common host anti-windup still limits what
-can be accepted. All other constrained cases remain frozen; PSCM limit 2
-never permits this request-increasing recovery.
-The no-new-bias restriction applies only to `release_recovery`. Once release
-ends, ordinary eligible integration can add correction beyond the base as
-before; its existing limits and guards are unchanged.
+can be accepted. A separate release-tracking exception is described below;
+other constrained cases remain frozen. PSCM limit 2 never permits either
+request-increasing exception.
+The no-new-bias restriction applies to `release_recovery`. It does not apply
+to the separate bounded `release_tracking` branch. Once release ends,
+ordinary eligible integration can add correction beyond the base as before;
+its existing limits and guards are unchanged.
 
 `release_recovery` and `feedback_recovery_active=true` indicate that the
 recovery branch actually changed bias on that update. If host anti-windup
@@ -158,6 +170,46 @@ outside backoff. Independent slew remains 0.5 rad/s for C1 and 4 m/s for C0.
 Backoff still compares against the delayed reference, so response lag remains.
 Reducing a request does not demonstrate that physical overshoot is resolved.
 
+## V8 release guard and tracking
+
+`ReleaseGuard` retains selected-request history independently of feedback
+bias history. Driver-related feedback resets do not erase that reference,
+but the guard still requires current fresh valid PSCM status, no current
+driver override, and the existing input and speed eligibility. Invalid core
+input or disengagement resets its history with the controller.
+
+During release, measured yaw must exceed both the current and delay-matched
+requests in the requested turn direction. Only then does the guard cap
+same-direction C0/C1 growth at each preceding continuous request. Terms
+already reducing the turn, including an opposing C0 centering offset, remain
+available. The guard follows base allocation and C1 feedback, so changing
+model geometry cannot bypass it. Its ceilings affect outputs, never stored
+bias. No scalar-curvature cap replaces strong model geometry during turn-in
+or undertracking. Existing independent slew and field limits still apply.
+
+`release_tracking` addresses an eligible release deficit once bias is zero
+or already in the base's direction. Both current and delayed requests must
+align with that base, measured turning must be below both, and measured
+curvature must not be rising in the turn direction across the response
+interval by more than one C1 wire quantum after scaling by heading preview.
+Fresh valid PSCM status with limit below 2 is required. The current yaw deficit
+uses the existing integration gain and measurement interval;
+new C1 tracking increments are limited by command headroom captured at
+release entry, tapered with remaining desired curvature. The allowance is
+`max(0, entry_command_magnitude - abs(base)) × min(1, abs(desired) / entry_reference)`
+above the current base; any existing same-direction bias consumes it first.
+This limits new tracking integration, not the existing model base or bias.
+Only that additional allowance is tapered; strong model geometry remains
+available. A brief pause does not reacquire a higher entry
+ceiling; a full response interval without release ends the retained episode.
+Common host anti-windup, field and slew bounds still apply. Opposing bias
+continues through `release_recovery`, which stops at zero, before any separate
+tracking exception can be considered.
+
+Neither exception relaxes the PSCM LimitReached growth restriction. The
+reference delay and finite response time remain; these output policies are
+command-construction changes, not evidence of improved physical tracking.
+
 ## PSCM status and driver handling
 
 card publishes `Lane_Assist_Data3_FD1` in `carStateSP.fordPscmStatus`, retaining
@@ -167,7 +219,8 @@ unrelated frames cannot refresh it. The opendbc submodule is unchanged.
 Feedback requires valid fresh status, InProgress lateral state (2), capability
 LimitedModeAvailable or ExtendedModeAvailable (1 or 2), and no denial.
 Missing, malformed, stale, backward-timestamped, denied or unavailable status
-clears bias/history, leaving the new base subject to its core validity gates.
+clears feedback bias/history and disables the separate release guard,
+leaving the base subject to its core validity gates.
 LimitReached (2) permits only the bounded request-reducing backoff described
 above and otherwise freezes integration. LimitWithDriverActive (3) clears
 feedback. Backoff still requires fresh, valid, InProgress status with an
@@ -176,7 +229,9 @@ a specific torque or rate limit.
 
 `steeringPressed`, raw torque above the existing Ford driver allowance, or
 nonfinite torque clear feedback. Below 2 m/s feedback also clears. A fresh
-reference interval is required after override. Base requests retain normal
+feedback reference interval is required after override; the independent
+release guard can use retained valid request history once its current gates
+are satisfied. Base requests retain normal
 PSCM driver arbitration while lateral control remains authorized; an unset
 override flag cannot rule out subthreshold driver influence.
 
@@ -190,9 +245,9 @@ Missing PSCM status disables feedback, not an otherwise valid base request.
 
 Vehicle → Ford → **C2-Free Path Tracking (Experimental)** retains the
 `FordVirtualAngleController` key, default-off setting and offroad/onroad cycle
-requirement. Enabled selects v7 on Ford CAN FD `FORD_F_150_LIGHTNING_MK1`
+requirement. Enabled selects v8 on Ford CAN FD `FORD_F_150_LIGHTNING_MK1`
 regardless of missing or different EPS firmware-query results. Other platforms
-retain their existing controller. V7 takes priority over PSCM Coefficient
+retain their existing controller. V8 takes priority over PSCM Coefficient
 Observer while selected; disabling and cycling offroad/onroad restores the
 previous selection. Controller selection does not force lateral engagement.
 
@@ -201,24 +256,35 @@ is not validation of other firmware. No live device setting is changed.
 
 ## Diagnostics and verification
 
-The 5 Hz `Ford C2-free path tracking` event keeps its name and identifies v7.
+The 5 Hz `Ford C2-free path tracking` event keeps its name and identifies v8.
 `model_offset_base` / `model_heading_base` report the already weighted and
 encoded model contribution; `curvature_offset_base` / `curvature_heading_base`
 report the residual-curvature contribution. `model_share` and `base_guard`
 identify model-pose, blended, curvature-only, opposed-model and zero-request
-cases. `offset_target` is the final bounded C0 target, `heading_base` the
-bounded pre-feedback C1, and `heading_target` the corrected C1 target.
+cases. `heading_base` is the bounded pre-feedback C1. `offset_target` and
+`heading_target` are the final targets after the independent release guard;
+`offset_target_unguarded` and `heading_target_unguarded` retain the inputs to
+that guard. The latter C1 already includes its normal feedback/backoff policy.
 
 The event retains source timestamps, measured curvature/yaw, final commands,
 slew scales, feedback bias/status/history, raw torque and PSCM status/age.
 `feedback_backoff_active` records the persistent heading ceiling, including
 cycles whose feedback status is `no_new_measurement`.
+`release_guard_active` and `release_guard_reference_curvature` expose the
+independent C0/C1 guard and its retained delayed reference.
+`feedback_release_tracking_active`, `feedback_release_ceiling` and
+`feedback_curvature_delta` identify accepted release
+tracking, the total-heading threshold used to admit new bias, and the
+measured-curvature change across the response interval (1/m). The tracking
+flag is true only when the branch accepts a bias change on a new measurement;
+it is false on repeated measurements. The ceiling/trend fields can describe
+an evaluated condition even when no increment is accepted.
 `feedback_recovery_active` records an accepted recovery increment on this
 update only; it does not persist between measurements.
 `feedback_yaw_error` retains its delayed-reference meaning. Recovery instead
 uses current error, reconstructed from logged `desired_curvature`,
 synchronized car-state speed and `yaw_rate`; those two errors can differ.
-During backoff, `heading_target` can be lower in the request direction than
+During backoff or the independent release guard, `heading_target` can be lower in the request direction than
 the bounded sum of `heading_base` and `heading_bias`, because the temporary
 ceiling is not part of the stored bias.
 `model_heading_target` remains a filtered comparison reference; it is not the
@@ -231,6 +297,26 @@ resets, reference causality, bounds, slew and CAN packing with C2/C3 zero.
 Recovery checks cover both directions, stopping at zero bias, repeated
 measurements, current-and-delayed agreement, and rejection at PSCM limit 2.
 Old v3/v4 command-equality expectations do not define
-v7 success. Historical v5/v6 replay results remain historical observations.
+v8 success. Guard checks also cover driver reset/history rebuilding,
+same-direction growth, opposing coefficients, repeated measurements,
+undertracking and invalid-status inhibition. Tracking checks cover delayed
+curvature trends and tapered release-entry headroom. Historical v5–v7 replay
+results remain historical observations.
+
+The v8 recorded-input fixture contains 15,273 cycles with 4,879 selected
+evidence samples. Base allocation and output eligibility match v7. In the
+clean deficient exit, median absolute C1 changes from 0.0665 to 0.0845 rad
+while C0 stays unchanged. The growth guard also acts while feedback history
+rebuilds; the largest over-growth witness includes nearby driver input and
+is excluded from the strict autonomous tracking score. Both good comparison
+curves in that fixture retain their median requests, and the older large-turn
+fixtures retain their required command scale.
+
+On the earlier good drive, one comparison curve retains extra C1 after
+eligible release tracking: median magnitude changes from 0.121 to 0.128 rad.
+In its 103–110 s interval, tracking increments occur only while measured
+turning falls short, with a median current response/request ratio of 0.895.
+Acquired bias can persist after matching, as with ordinary integral feedback.
+This collateral command change remains a reason to compare new vehicle logs.
 Replay fixes recorded motion and planner outputs, so enabled vehicle logs
 are still required to assess tracking error, oscillation and interventions.

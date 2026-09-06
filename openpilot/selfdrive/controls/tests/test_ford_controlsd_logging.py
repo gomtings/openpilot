@@ -62,11 +62,15 @@ class TestFordControlsLogging(unittest.TestCase):
       self.assertEqual(record['reference_service'], 'modelV2')
       self.assertEqual(record['reference_mono_time'], 123456789)
       self.assertEqual(record['status'], controller.diagnostics['status'])
-      self.assertEqual(record['hypothesis'], 'model-pose-c0-c1-feedback-v7')
+      self.assertEqual(record['hypothesis'], 'model-pose-c0-c1-feedback-v8')
       self.assertEqual(record['command'], list(controller.diagnostics['command']))
       self.assertIs(record['feedback_backoff_active'], False)
       self.assertIs(record['feedback_recovery_active'], False)
+      self.assertIs(record['feedback_release_tracking_active'], False)
+      self.assertIsNone(record['feedback_release_ceiling'])
+      self.assertIsNone(record['feedback_curvature_delta'])
       if active and valid:
+        self.assertIs(record['release_guard_active'], False)
         self.assertEqual(record['response_delay'], 0.2)
         self.assertEqual(record['desired_curvature'], 0.01)
         self.assertEqual(record['measured_curvature'], 0.005)
@@ -76,7 +80,10 @@ class TestFordControlsLogging(unittest.TestCase):
         self.assertEqual(record['heading_target'], record['heading_base'])  # missing PSCM status leaves the base intact
         self.assertTrue(all(key in record for key in ('offset_target', 'heading_target', 'model_heading_target', 'model_heading_horizon',
                                                     'model_age', 'reference_age', 'reference_filter_time', 'model_offset_base', 'model_heading_base',
-                                                    'curvature_offset_base', 'curvature_heading_base', 'model_share', 'base_guard')))
+                                                    'curvature_offset_base', 'curvature_heading_base', 'model_share', 'base_guard',
+                                                    'offset_target_unguarded', 'heading_target_unguarded',
+                                                    'release_guard_reference_curvature', 'feedback_release_ceiling',
+                                                    'feedback_curvature_delta')))
 
   def test_periodic_diagnostics_distinguish_model_curvature_and_blended_bases(self):
     for desired, geometry, guard, share in ((.02, .02, 'model_pose', 1.), (.002, .002, 'curvature_only', 0.),
@@ -144,6 +151,60 @@ class TestFordControlsLogging(unittest.TestCase):
           self.assertIs(record['feedback_recovery_active'], limit == 0 and now == 1.5)
           self.assertIs(record['feedback_backoff_active'], False)
           self.assertEqual(record['heading_bias'], controller.diagnostics['heading_bias'])
+
+  def test_periodic_diagnostics_expose_release_guard_during_feedback_history_reset(self):
+    for sign in (-1, 1):
+      with self.subTest(sign=sign):
+        controller = FordVirtualAngleController()
+        for i in range(60):
+          now = 1. + i * .01
+          controller.update(circle(sign * .02), sign * .02, yaw_rate=sign * .2, speed=10., now=now, measurement_time=now,
+                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
+        for now, pressed, measurement, expected in ((1.6, True, 1.6, 'driver_override'),
+                                                  (1.61, False, 1.61, 'history'), (1.62, False, 1.61, 'no_new_measurement')):
+          controller.update(circle(sign * .03), sign * .018, yaw_rate=sign * .4, speed=10., now=now, measurement_time=measurement,
+                            model_time=now, reference_time=now, active=True, steering_pressed=pressed,
+                            pscm_status=PscmStatus(now, 2, 0, 2, False))
+          controls = SimpleNamespace(ford_path_controller=controller, curvature=sign * .04,
+                                     sm=SimpleNamespace(logMonoTime={'modelV2': int(now * 1e9), 'carState': int(measurement * 1e9)}))
+          record = self.emit_controls_event('Ford C2-free path tracking', controls)
+          self.assertEqual(record['feedback_status'], expected)
+          self.assertIs(record['release_guard_active'], not pressed)
+          self.assertAlmostEqual(record['release_guard_reference_curvature'], sign * .02)
+          self.assertEqual(record['heading_bias'], 0.)
+          for field in ('offset_target', 'heading_target'):
+            self.assertEqual(record[field + '_unguarded'], controller.diagnostics[field + '_unguarded'])
+            if pressed:
+              self.assertEqual(record[field], record[field + '_unguarded'])
+            else:
+              self.assertLess(sign * record[field], sign * record[field + '_unguarded'])
+
+  def test_periodic_diagnostics_expose_accepted_release_tracking_and_its_ceiling(self):
+    for sign in (-1, 1):
+      with self.subTest(sign=sign):
+        controller = FordVirtualAngleController()
+        for i in range(60):
+          now = 1. + i * .01
+          controller.update(circle(sign * .04), sign * .04, yaw_rate=sign * .4, speed=10., now=now, measurement_time=now,
+                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
+        for now in (1.6, 1.61):
+          controller.update(circle(sign * .02), sign * .03, yaw_rate=sign * .2, speed=10., now=now, measurement_time=1.6,
+                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
+          controls = SimpleNamespace(ford_path_controller=controller, curvature=sign * .02,
+                                     sm=SimpleNamespace(logMonoTime={'modelV2': int(now * 1e9), 'carState': 1_600_000_000}))
+          record = self.emit_controls_event('Ford C2-free path tracking', controls)
+          fresh = now == 1.6
+          self.assertEqual(record['feedback_status'], 'release_tracking' if fresh else 'no_new_measurement')
+          self.assertIs(record['feedback_release_tracking_active'], fresh)
+          self.assertIs(record['feedback_recovery_active'], False)
+          self.assertIs(record['release_guard_active'], False)
+          if fresh:
+            self.assertLess(sign * record['feedback_curvature_delta'], 0.)
+            self.assertGreater(sign * record['heading_target'], sign * record['heading_base'])
+            self.assertLessEqual(sign * record['heading_target'], record['feedback_release_ceiling'])
+          else:
+            self.assertIsNone(record['feedback_release_ceiling'])
+            self.assertIsNone(record['feedback_curvature_delta'])
 
   def test_actual_ford_branch_uses_selected_reference_and_disables_invalid_output(self):
     source_path = Path(__file__).resolve().parents[1] / 'controlsd.py'

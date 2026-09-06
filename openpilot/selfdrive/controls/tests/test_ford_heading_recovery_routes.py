@@ -88,9 +88,13 @@ class TestFordHeadingRecoveryRoutes(unittest.TestCase):
     self.assertTrue((self.heading_bias[mask] * self.bias_before_update[mask] >= -1e-12).all())
     self.assertTrue((abs(self.heading_target[mask]) <= abs(self.heading_base[mask]) + 1e-12).all())
 
-  def test_c0_base_and_output_validity_are_unchanged(self):
+  def test_guard_does_not_add_c0_and_preserves_heading_base_and_validity(self):
     evidence = self.data['evidence']
-    np.testing.assert_array_equal(self.commands[evidence, 0], self.data['baseline_commands'][evidence, 0])
+    # The release guard now intentionally prevents same-direction C0 growth.
+    # Keep the original fixture's no-extra-demand requirement and its separate
+    # good-curve retention checks, rather than insisting on old excess demand.
+    direction = np.sign(self.data['desired_curvature'][evidence])
+    self.assertTrue(((self.commands[evidence, 0] - self.data['baseline_commands'][evidence, 0]) * direction <= 1e-12).all())
     np.testing.assert_array_equal(self.heading_base[evidence], self.data['baseline_heading_base'][evidence])
     np.testing.assert_array_equal(self.gates[evidence], self.data['baseline_valid'][evidence])
 
