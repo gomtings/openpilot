@@ -11,9 +11,8 @@ import pyray as rl
 
 from openpilot.selfdrive.ui.mici.layouts.home import MiciHomeLayout
 from openpilot.selfdrive.ui.ui_state import ui_state, ChestnutState
-from openpilot.system.ui.lib.application import FontWeight
+from openpilot.system.ui.lib.application import FontWeight, TextAlignment
 from openpilot.system.ui.lib.multilang import tr
-from openpilot.system.ui.widgets.icon_widget import IconWidget
 from openpilot.system.ui.widgets.label import UnifiedLabel, gui_label
 
 METERS_PER_MILE = 1609.344
@@ -33,10 +32,6 @@ class MiciHomeLayoutSP(MiciHomeLayout):
   def __init__(self):
     super().__init__()
     self._openpilot_label = UnifiedLabel("sunnypilot", font_size=88, font_weight=FontWeight.AUDIOWIDE, max_width=480, wrap_text=False)
-    self._chestnut_loading_icon = IconWidget("icons_mici/chestnut.png", (68, 40))
-    self._chestnut_loading_icon.set_visible(False)
-    failed_idx = self._status_bar_layout.widgets.index(self._chestnut_failed_icon)
-    self._status_bar_layout.widgets.insert(failed_idx + 1, self._chestnut_loading_icon)
     initial_summary = ui_state.params.get("LastDriveAssistedDrivingSummary", return_default=True) or {}
     self._last_summary_id = initial_summary.get("id", 0)
     self._summary_wait_until = 0.0
@@ -74,21 +69,25 @@ class MiciHomeLayoutSP(MiciHomeLayout):
 
     rl.draw_rectangle_rec(rect, rl.Color(0, 0, 0, 235))
     gui_label(rl.Rectangle(rect.x, rect.y + 14, rect.width, 52), tr("DRIVE COMPLETE"), 42,
-              font_weight=FontWeight.SEMI_BOLD, alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+              font_weight=FontWeight.SEMI_BOLD, alignment=TextAlignment.CENTER)
     gui_label(rl.Rectangle(rect.x + 20, rect.y + 78, rect.width / 2 - 30, 42), tr("MADS"), 28,
-              color=rl.Color(255, 255, 255, 184), alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+              color=rl.Color(255, 255, 255, 184), alignment=TextAlignment.CENTER)
     gui_label(rl.Rectangle(rect.x + rect.width / 2 + 10, rect.y + 78, rect.width / 2 - 30, 42), tr("FULL ASSIST"), 28,
-              color=rl.Color(255, 255, 255, 184), alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+              color=rl.Color(255, 255, 255, 184), alignment=TextAlignment.CENTER)
     gui_label(rl.Rectangle(rect.x + 20, rect.y + 116, rect.width / 2 - 30, 72), f"{mads:.1f} {unit}", 48,
-              font_weight=FontWeight.DISPLAY, alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+              font_weight=FontWeight.DISPLAY, alignment=TextAlignment.CENTER)
     gui_label(rl.Rectangle(rect.x + rect.width / 2 + 10, rect.y + 116, rect.width / 2 - 30, 72), f"{full_assist:.1f} {unit}", 48,
-              font_weight=FontWeight.DISPLAY, alignment=rl.GuiTextAlignment.TEXT_ALIGN_CENTER)
+              font_weight=FontWeight.DISPLAY, alignment=TextAlignment.CENTER)
 
   def _set_chestnut_visibility(self):
-    # stock has no loading tier: it shows green from the moment a big model is available. keep the
-    # pulse so the status bar and the onroad HUD agree on what loading looks like.
-    loading = ui_state.chestnut_state == ChestnutState.LOADING
-    self._chestnut_loading_icon._opacity = 0.35 + 0.65 * (0.5 - 0.5 * math.cos(rl.get_time() * 6.0))
-    self._chestnut_loading_icon.set_visible(loading)
-    self._chestnut_icon.set_visible(not loading and ui_state.chestnut_state in (ChestnutState.READY, ChestnutState.ACTIVE))
-    self._chestnut_failed_icon.set_visible(ui_state.chestnut_state in (ChestnutState.UNCOMPILED, ChestnutState.FAILED))
+    usb_connected = ui_state.usb_connected
+    usb_unknown = ui_state.usb_unknown
+    chestnut_state = ui_state.chestnut_state
+    loading = chestnut_state == ChestnutState.LOADING
+
+    self._usb_icon.set_visible(usb_connected and usb_unknown)
+    self._chestnut_loading_icon.set_opacity(0.35 + 0.65 * (0.5 - 0.5 * math.cos(rl.get_time() * 6.0)))
+    self._chestnut_loading_icon.set_visible(not usb_unknown and loading)
+    self._chestnut_icon.set_visible(not usb_unknown and not loading and
+                                    chestnut_state in (ChestnutState.READY, ChestnutState.ACTIVE))
+    self._chestnut_failed_icon.set_visible(not usb_unknown and chestnut_state in (ChestnutState.UNCOMPILED, ChestnutState.FAILED))
