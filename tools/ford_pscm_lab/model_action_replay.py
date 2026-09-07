@@ -1,7 +1,7 @@
 """Replay the selected core and its adapter on route90/95 original-time extracts.
 
-The historical pass deliberately uses the archived eligibility mask to check
-command compatibility. The separate adapter pass reconstructs input eligibility
+The historical pass uses zero yaw and the archived eligibility mask to check
+v1 command compatibility. The separate v2 adapter pass reconstructs input eligibility
 from service records, never from candidate/baseline output validity. Neither
 pass scores counterfactual motion. Source extracts and archived reports are
 read-only; --output selects a separate destination.
@@ -143,11 +143,11 @@ def run(directory, output):
     adapter_valid[i] = new_gate.valid
     reasons[adapter.diagnostics['status']] += 1
     wire.check(new_gate)
-    # Isolate the adapter's fresh 10 ms engagement tick from the archived
-    # harness, which used the preceding publication interval even on engage.
+    # Current core receives actual yaw and a fresh 10 ms engagement tick;
+    # the archived v1 construction above deliberately receives zero yaw.
     entry_dt = dt[i] if i > 0 and baseline['valid'][i-1] else .01
     expected_adapter = entry_clock_core.update(selected_model, controls['desired'][i], speed=cs['speed'][i], dt=entry_dt,
-                                               active=bool(baseline['valid'][i]))
+                                               yaw_rate=cs['yaw'][i], active=bool(baseline['valid'][i]))
     assert new_gate == expected_adapter, f'Unexplained adapter difference at cycle {i}'
   np.testing.assert_array_equal(valid, baseline['valid'])
   np.testing.assert_array_equal(commands[:, :2], baseline['action_heading'])
@@ -190,7 +190,7 @@ def run(directory, output):
             'calibration_approved': False, 'executes_live_selector': False, 'cycles': len(t),
             'core_active_cycles': int(valid.sum()), 'core_exact_archived_match': True, 'cohorts_reproduced': True,
             'adapter_active_cycles': int(adapter_valid.sum()), 'adapter_status_counts': dict(reasons),
-            'adapter_exact_match_with_fresh_engagement_dt': True,
+            'adapter_matches_current_core_with_yaw_and_fresh_engagement_dt': True,
             'core_active_path_shorter_than_7m_cycles': int(np.sum(valid & (coverage < 7.))),
             'adapter_validity_differs_from_archive_cycles': int(np.sum(adapter_valid != valid)),
             'adapter_command_differs_from_archive_cycles': int(np.any(abs(adapted-commands) > 1e-9, axis=1).sum()),
@@ -199,7 +199,7 @@ def run(directory, output):
             'timing': 'Original controls publication timestamps proxy computation time; repeated frames and gaps retained. No identified delay.',
             'eligibility': 'Adapter checks recorded services independently; full SubMaster health is unavailable. Core uses archived validity.',
             'reference': 'Recorded controlsState.desiredCurvature, already selected/limited. These two routes have no maneuver publications.',
-            'host_yaw': 'Extract cs.yaw already equals -carState.yawRate. Used only for inherited finite/range gate, never feedback.',
+            'host_yaw': 'Extract cs.yaw equals -carState.yawRate; v2 adapter uses it for bounded damping. Archived core pass uses zero yaw.',
             'cohorts': cohorts, 'workspace_head': revision(root), 'opendbc_import_head': revision(dependency),
             'opendbc_import_path': str(dependency),
             'source_sha256': {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}}

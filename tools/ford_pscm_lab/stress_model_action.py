@@ -56,6 +56,7 @@ def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
     offset, heading = float(rng.uniform(-8., 8.)), float(rng.uniform(-1.2, 1.2))
     speed = float(rng.uniform(.3, 55.))
     desired = float(rng.uniform(-.15, .15))
+    yaw = float(rng.uniform(-3., 3.))
     dt = dt_values[i % len(dt_values)]
     active = i % 137 != 0
     valid = i % 211 != 0
@@ -64,14 +65,21 @@ def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
     model, mirror = line(offset, heading), line(-offset, -heading)
     if i % 401 == 0:
       model.position.y[4] = mirror.position.y[4] = math.nan
-    out = controller.update(model, desired, speed=speed, dt=dt, active=active, valid=valid)
-    other = mirrored.update(mirror, -desired, speed=speed, dt=dt, active=active, valid=valid)
+    out = controller.update(model, desired, speed=speed, dt=dt, yaw_rate=yaw, active=active, valid=valid)
+    other = mirrored.update(mirror, -desired, speed=speed, dt=dt, yaw_rate=-yaw, active=active, valid=valid)
     expected_valid = active and valid and dt <= .1 and i % 401 != 0
     assert out.valid == other.valid == expected_valid
     previous = np.array([c0, c1])
     if expected_valid:
       target = (max(-5.11, min(5.11, offset+7.*math.sin(heading))), max(-.5, min(.5, max(7., speed)*desired)))
-      c0 += max(-4.*dt, min(4.*dt, target[0]-c0))
+      # Independent piecewise scalar oracle; do not call the production helper.
+      offset_target = target[0]
+      if offset_target > 0. and yaw > 0.:
+        offset_target = max(0., offset_target-1.4*max(0., yaw-max(0., speed*desired)-.02))
+      elif offset_target < 0. and yaw < 0.:
+        offset_target = min(0., offset_target+1.4*max(0., -yaw-max(0., -speed*desired)-.02))
+      assert abs(offset_target) <= abs(target[0]) and offset_target*target[0] >= 0.
+      c0 += max(-4.*dt, min(4.*dt, offset_target-c0))
       c1 += max(-.5*dt, min(.5*dt, target[1]-c1))
       step = abs(np.array([controller.c0, controller.c1])-previous)
       assert (step <= np.array(rates)*dt+1e-10).all()
@@ -105,6 +113,7 @@ def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
   report = {'seed': seed, 'random_cycles': cycles, 'mirrored_core_updates': cycles,
             'invalid_or_inactive_resets': resets, 'field_boundary_cases': boundary_cases,
             'float32_can_round_trips': wire.count, 'analytic_targets_scalar_slew_and_mirror_checks_pass': True,
+            'bounded_excess_yaw_damping_checked': True,
             'direct_raw_float32_packing_matches_host_output': True, 'max_continuous_step_c0_c1': max_continuous_step.tolist(),
             'calibration_approved': False, 'scope': 'Numerical construction only; no PSCM response or closed-loop performance claims.',
             'opendbc_import_head': revision(dependency),

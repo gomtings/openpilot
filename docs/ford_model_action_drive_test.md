@@ -1,8 +1,9 @@
 # Ford selected-action drive-test branch
 
 The candidate is selectable on the **Ford CAN FD F-150 Lightning** behind
-its own persistent, default-off Sunnylink toggle. The command law and input
-gates from the [offline candidate](ford_model_action_candidate.md) are unchanged.
+its own persistent, default-off Sunnylink toggle. Version 2 adds
+[bounded excess-yaw offset damping](ford_model_action_damping.md) to the
+[original candidate](ford_model_action_candidate.md). Input gates are unchanged.
 `calibration_approved=false`: offline checks do not establish physical tracking,
 turn-exit behavior or closed-loop stability.
 
@@ -19,7 +20,7 @@ turn-exit behavior or closed-loop stability.
 
 The startup log event `Ford path controller selected` should report
 `FordModelActionController`. Periodic `Ford C2-free path tracking` events
-identify `hypothesis=model-action-c0-c1-v1` and report the command tuple.
+identify `hypothesis=model-action-c0-c1-yaw-damping-v2` and report host yaw and the command tuple.
 
 Turning the new toggle off and completing another offroad-to-onroad cycle
 restores **PSCM Coefficient Observer** if selected, otherwise the original
@@ -53,16 +54,13 @@ returns separate strings owned by the parameter handle. Regression tests
 check distinct registered keys across flags, and toggle tests check its
 persistence and backup registration using the rebuilt native library.
 
-The current validation record is `ford_model_action_drive_test_validation.json`.
-The final combined Ford, Params and Sunnylink suite passes **284 tests and
-26 subtests**, with no skips. The candidate has **100% statement and branch
-coverage** (87 statements, 26 branches). Ruff, Ty, settings compilation and
-both review axes pass. The fresh route/stress runs check **485,238 Float32/CAN
-round trips**, including 200,000 randomized and 200,000 mirrored core updates.
-The controller is 145 total lines, including 95 code lines excluding comments,
-blanks and docstrings; v8's 469-line module is removed.
+The current validation record is `ford_model_action_damping_validation.json`;
+the [damping notes](ford_model_action_damping.md) explain its scope and limitations.
+`ford_model_action_drive_test_validation.json` archives v1 wiring validation
+at the recorded source hashes, including 284 tests and 26 subtests. Its counts
+and 145-line controller size describe v1. The 469-line v8 module remains removed.
 
-The previous 133,550-cycle route reconstruction, 485,238 packing round trips
+The original 133,550-cycle route reconstruction, 485,238 packing round trips
 and mutation probes remain recorded separately in
 `ford_model_action_validation.json` at the offline-stage source hashes.
 

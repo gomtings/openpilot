@@ -162,7 +162,8 @@ class Subscriptions:
 
 
 @pytest.mark.parametrize('maneuver', [False, True])
-def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipeline, maneuver):
+@pytest.mark.parametrize('host_yaw', [.0072, .3])
+def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipeline, maneuver, host_yaw):
   call, publication = pipeline
   sm = Subscriptions(maneuver)
   controls = startup()
@@ -171,14 +172,16 @@ def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipe
   model = straight(.4)
   model.action = SimpleNamespace(desiredCurvature=.1)
   cc = structs.CarControl(latActive=True)
-  cs = SimpleNamespace(vEgo=20., yawRate=-.0072, canValid=True, steeringPressed=False, steeringTorque=0.)
+  cs = SimpleNamespace(vEgo=20., yawRate=-host_yaw, canValid=True, steeringPressed=False, steeringTorque=0.)
   environment = {'self': controls, 'CS': cs, 'CC': cc, 'actuators': cc.actuators, 'model_v2': model, 'lp': SimpleNamespace(roll=0.),
                      'clip_curvature': clip_curvature, 'time': SimpleNamespace(monotonic=lambda: 1.)}
   exec(call, environment)
   expected_curvature = (-1 if maneuver else 1)*.000125
   assert controls.desired_curvature == pytest.approx(expected_curvature)
   assert controls.ford_path.path_angle == pytest.approx(20.*expected_curvature)
-  assert controls.ford_path.path_offset == pytest.approx(.04)
+  expected_offset = .04 if host_yaw < .02 else .01
+  assert controls.ford_path.path_offset == pytest.approx(expected_offset)
+  assert controller.diagnostics['yaw_rate'] == host_yaw
   assert cc.latActive and cc.actuators.curvature == 0.
   assert controller.diagnostics['reference_age'] == pytest.approx(.01 if maneuver else .02)
 
