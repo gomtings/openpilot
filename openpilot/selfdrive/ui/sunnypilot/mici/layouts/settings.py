@@ -42,6 +42,13 @@ class AlwaysOffroadDisengageDialog(BigDialog):
       self.dismiss(self._disengaged_callback)
 
 
+class AlwaysOffroadConfirmationDialog(BigConfirmationDialog):
+  def _update_state(self):
+    super()._update_state()
+    if ui_state.engaged and not self.is_dismissing:
+      self.dismiss()
+
+
 class SettingsLayoutSP(OP.SettingsLayout):
   def __init__(self):
     OP.SettingsLayout.__init__(self)
@@ -110,6 +117,6 @@ class SettingsLayoutSP(OP.SettingsLayout):
         gui_app.push_widget(AlwaysOffroadDisengageDialog(lambda: self._handle_always_offroad(True)))
         return
 
-      dlg = BigConfirmationDialog(tr("slide to force offroad"), self.icon_offroad_slider, red=True,
-                                  confirm_callback=lambda: _set_offroad_status(True))
+      dlg = AlwaysOffroadConfirmationDialog(tr("slide to force offroad"), self.icon_offroad_slider, red=True,
+                                            confirm_callback=lambda: _set_offroad_status(True))
     gui_app.push_widget(dlg)
