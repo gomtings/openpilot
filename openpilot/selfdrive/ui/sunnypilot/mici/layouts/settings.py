@@ -4,13 +4,11 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
-from collections.abc import Callable
-
 from openpilot.selfdrive.ui.mici.layouts.settings import settings as OP
 from openpilot.selfdrive.ui.mici.layouts.settings.settings import SettingsBigButton
-from openpilot.selfdrive.ui.mici.layouts.settings.device import DeviceLayoutMici
+from openpilot.selfdrive.ui.mici.layouts.settings.device import DeviceLayoutMici, engaged_confirmation_click
 from openpilot.selfdrive.ui.mici.widgets.button import BigCircleButton
-from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog, BigDialog
+from openpilot.selfdrive.ui.mici.widgets.dialog import BigConfirmationDialog
 from openpilot.selfdrive.ui.sunnypilot.mici.layouts.sunnylink import SunnylinkLayoutMici
 from openpilot.selfdrive.ui.sunnypilot.mici.layouts.models import ModelsLayoutMici
 from openpilot.selfdrive.ui.ui_state import ui_state
@@ -29,24 +27,6 @@ class SunnylinkBigButton(SettingsBigButton):
   def _get_label_font_size(self):
     # Audiowide runs wider than Inter: "sunnylink" wraps to two lines at 64
     return 56
-
-
-class AlwaysOffroadDisengageDialog(BigDialog):
-  def __init__(self, callback: Callable[[], None]):
-    super().__init__(tr("disengage to enable always offroad"), "")
-    self._disengaged_callback = callback
-
-  def _update_state(self):
-    super()._update_state()
-    if not ui_state.engaged and not self.is_dismissing:
-      self.dismiss(self._disengaged_callback)
-
-
-class AlwaysOffroadConfirmationDialog(BigConfirmationDialog):
-  def _update_state(self):
-    super()._update_state()
-    if ui_state.engaged and not self.is_dismissing:
-      self.dismiss()
 
 
 class SettingsLayoutSP(OP.SettingsLayout):
@@ -113,10 +93,6 @@ class SettingsLayoutSP(OP.SettingsLayout):
       dlg = BigConfirmationDialog(tr("slide to exit always offroad"), self.icon_offroad_slider, red=False,
                                   confirm_callback=lambda: _set_offroad_status(False))
     else:
-      if ui_state.engaged:
-        gui_app.push_widget(AlwaysOffroadDisengageDialog(lambda: self._handle_always_offroad(True)))
-        return
-
-      dlg = AlwaysOffroadConfirmationDialog(tr("slide to force offroad"), self.icon_offroad_slider, red=True,
-                                            confirm_callback=lambda: _set_offroad_status(True))
+      engaged_confirmation_click(lambda: _set_offroad_status(True), "force offroad", self.icon_offroad_slider, red=True)
+      return
     gui_app.push_widget(dlg)

@@ -62,7 +62,25 @@ class MiciFccModal(NavRawScrollPanel):
     rl.draw_texture_ex(self._fcc_logo, fcc_pos, 0.0, 1.0, rl.WHITE)
 
 
-def _engaged_confirmation_click(callback: Callable, action_text: str, icon: rl.Texture, exit_on_confirm: bool = True, red: bool = False):
+class DisengageDialog(BigDialog):
+  def __init__(self, title: str, description: str, disengaged_callback: Callable[[], None]):
+    super().__init__(title, description)
+    self._disengaged_callback = disengaged_callback
+
+  def _update_state(self):
+    super()._update_state()
+    if not ui_state.engaged and not self.is_dismissing:
+      self.dismiss(self._disengaged_callback)
+
+
+class EngagedConfirmationDialog(BigConfirmationDialog):
+  def _update_state(self):
+    super()._update_state()
+    if ui_state.engaged and not self.is_dismissing:
+      self.dismiss()
+
+
+def engaged_confirmation_click(callback: Callable, action_text: str, icon: rl.Texture, exit_on_confirm: bool = True, red: bool = False):
   if not ui_state.engaged:
     def confirm_callback():
       # Check engaged again in case it changed while the dialog was open
@@ -70,23 +88,26 @@ def _engaged_confirmation_click(callback: Callable, action_text: str, icon: rl.T
       if not ui_state.engaged:
         callback()
 
-    gui_app.push_widget(BigConfirmationDialog(f"slide to\n{action_text.lower()}", icon, confirm_callback, exit_on_confirm=exit_on_confirm, red=red))
+    gui_app.push_widget(EngagedConfirmationDialog(f"slide to\n{action_text.lower()}", icon, confirm_callback,
+                                                  exit_on_confirm=exit_on_confirm, red=red))
   else:
-    gui_app.push_widget(BigDialog("", f"Disengage to {action_text}"))
+    gui_app.push_widget(DisengageDialog("", f"Disengage to {action_text}",
+                                           lambda: engaged_confirmation_click(callback, action_text, icon,
+                                                                               exit_on_confirm=exit_on_confirm, red=red)))
 
 
 class EngagedConfirmationCircleButton(BigCircleButton):
   def __init__(self, title: str, icon: rl.Texture, callback: Callable[[], None], exit_on_confirm: bool = True,
                red: bool = False, icon_offset: tuple[int, int] = (0, 0)):
     super().__init__(icon, red, icon_offset)
-    self.set_click_callback(lambda: _engaged_confirmation_click(callback, title, icon, exit_on_confirm=exit_on_confirm, red=red))
+    self.set_click_callback(lambda: engaged_confirmation_click(callback, title, icon, exit_on_confirm=exit_on_confirm, red=red))
 
 
 class EngagedConfirmationButton(BigButton):
   def __init__(self, text: str, action_text: str, icon: rl.Texture, callback: Callable[[], None],
                exit_on_confirm: bool = True, red: bool = False):
     super().__init__(text, "", icon)
-    self.set_click_callback(lambda: _engaged_confirmation_click(callback, action_text, icon, exit_on_confirm=exit_on_confirm, red=red))
+    self.set_click_callback(lambda: engaged_confirmation_click(callback, action_text, icon, exit_on_confirm=exit_on_confirm, red=red))
 
 
 class DeviceInfoLayoutMici(Widget):
