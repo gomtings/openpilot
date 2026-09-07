@@ -8,8 +8,8 @@ turn-exit behavior or closed-loop stability.
 
 ## Select and restore
 
-1. Install branch `codex/ford-model-action-drive-test` from
-   `hiimisaac/openpilot` on the device using your normal branch-switch process.
+1. Install branch `hiimisaac-dev` from
+   `sunnypilot/sunnypilot` on the device using your normal branch-switch process.
    Allow its build to finish before changing the setting.
 2. While offroad, open Sunnylink device settings → Vehicle → Ford and enable
    **Selected-Action Path Tracking (Experimental)** (`FordModelActionController`).

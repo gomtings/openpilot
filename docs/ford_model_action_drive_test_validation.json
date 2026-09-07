@@ -135,6 +135,11 @@
     "tools/ford_pscm_lab/stress_model_action.py": "2d5c72cc4b8ae214f2f5a19a050fe138f5c2ab0294d92d24e2481af5f8185613",
     "tools/ford_pscm_lab/test_model_action_replay.py": "ebf6bcd9260745100311521f8e11e85b7aebdd5561ab0876bfc2e802429d6896",
     "openpilot/selfdrive/controls/tests/test_ford_model_action_selection.py": "f826c6328f0abac2a61f1a0a6f8d119fdbab858e363cb466d84ba9a7783059cd",
-    "docs/ford_model_action_drive_test.md": "1955f83646d1717b4927ab15c9e56fff277db0af090be47631fab04596be279d"
+    "docs/ford_model_action_drive_test.md": "d825b177cd099efd797fe89b7041695d6d41e4b9e8bba6bcaeb32aece164262b"
+  },
+  "deployment_target": {
+    "repository": "sunnypilot/sunnypilot",
+    "branch": "hiimisaac-dev",
+    "validated_code_commit": "ea1ed70c718d32539ef6b9a89b89c0e297c92e06"
   }
 }
