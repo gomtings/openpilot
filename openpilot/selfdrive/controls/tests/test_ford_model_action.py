@@ -32,7 +32,7 @@ def test_selected_action_controls_heading_even_when_model_previews_another_turn(
   assert encode_model_action(model, 0., 20.).path_offset > 0.
 
 
-def test_centering_information_is_independent_of_action_and_not_scaled_with_speed():
+def test_straight_centering_and_matched_curves_keep_base_gain_across_speed():
   for speed in (2., 7., 20., 35.):
     target = encode_model_action(straight(.4), 0., speed)
     assert target == FordPath(True, .4, 0., 0., 0.)
@@ -180,14 +180,14 @@ def test_arc_station_not_forward_x_or_model_heading_determines_offset():
   x = np.array([0., 6., 12.])
   y = .4+x*.75
   target = encode_model_action(make_model(x, y, [2., -2., 1.]), -.01, 20.)
-  # Arc length is 1.25*x on this line, so y(arc=7)=.4+.75*(7/1.25).
-  assert target.path_offset == pytest.approx(4.6)
+  # Arc length is 1.25*x, so base y(7)=4.6. Prediction reaches its +.15m bound.
+  assert target.path_offset == pytest.approx(4.75)
   assert target.path_angle == pytest.approx(-.2)
 
 
 def test_duplicate_stations_keep_valid_geometry_and_first_cycle_slew():
   model = make_model([0., 0., 10.], [.4, .4, .4], [0., 0., 0.])
-  assert encode_model_action(model, .01, 20.) == FordPath(True, .4, .2, 0., 0.)
+  assert encode_model_action(model, 0., 20.) == FordPath(True, .4, 0., 0., 0.)
   out = ModelActionController().update(model, .01, speed=20., dt=.002)
   assert out.path_offset == pytest.approx(.01)
   assert out.path_angle == pytest.approx(.001)

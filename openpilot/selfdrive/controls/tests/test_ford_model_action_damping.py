@@ -58,8 +58,8 @@ def test_core_keeps_heading_unchanged_and_slews_offset_independently(sign):
     b = damped.update(straight(sign*.4), desired, speed=10., dt=.01, yaw_rate=sign*.2)
     assert a.path_angle == b.path_angle
     assert a.curvature == b.curvature == a.curvature_rate == b.curvature_rate == 0.
-  assert a.path_offset == pytest.approx(sign*.4)
-  assert b.path_offset == pytest.approx(sign*.16)
+  assert a.path_offset == pytest.approx(sign*.39)  # Geometric prediction slightly reduces the .4m offset.
+  assert b.path_offset == pytest.approx(sign*.15)
   # No damping memory: a fresh copied pair of actuator states behaves identically.
   copied = ModelActionController()
   copied.c0, copied.c1 = damped.c0, damped.c1

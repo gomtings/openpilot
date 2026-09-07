@@ -1,7 +1,7 @@
 """Deterministic numerical stress and exhaustive field-boundary CAN checks.
 
-Analytic straight/rotated paths supply an independent y(7) oracle. The
-reference slew uses scalar arithmetic. Packing is checked against direct
+Analytic straight/rotated paths and an independent rigid-motion transform
+check geometric prediction. The reference slew uses scalar arithmetic. Packing is checked against direct
 Float32/CAN packing of the continuous state, independently of host _packed.
 No synthetic plant is fitted or used to claim vehicle tracking performance.
 """
@@ -71,7 +71,20 @@ def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
     assert out.valid == other.valid == expected_valid
     previous = np.array([c0, c1])
     if expected_valid:
-      target = (max(-5.11, min(5.11, offset+7.*math.sin(heading))), max(-.5, min(.5, max(7., speed)*desired)))
+      base = offset+7.*math.sin(heading)
+      distance, rotation = speed*.15, desired*speed*.15
+      # Independent full pose transform, including stable small-angle series.
+      if abs(rotation) < 1e-5:
+        ego_x = distance*(1.-rotation**2/6.+rotation**4/120.)
+        ego_y = distance*(rotation/2.-rotation**3/24.+rotation**5/720.)
+      else:
+        ego_x, ego_y = math.sin(rotation)/desired, (1.-math.cos(rotation))/desired
+      future_x, future_y = (7.+distance)*math.cos(heading), offset+(7.+distance)*math.sin(heading)
+      predicted = math.cos(rotation)*(future_y-ego_y)-math.sin(rotation)*(future_x-ego_x)
+      bound = min(.15, .25*abs(base))
+      advanced = base+max(-bound, min(bound, predicted-base))
+      assert abs(advanced-base) <= bound+1e-12 and advanced*base >= 0.
+      target = (max(-5.11, min(5.11, advanced)), max(-.5, min(.5, max(7., speed)*desired)))
       # Independent piecewise scalar oracle; do not call the production helper.
       offset_target = target[0]
       if offset_target > 0. and yaw > 0.:
@@ -114,6 +127,7 @@ def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
             'invalid_or_inactive_resets': resets, 'field_boundary_cases': boundary_cases,
             'float32_can_round_trips': wire.count, 'analytic_targets_scalar_slew_and_mirror_checks_pass': True,
             'bounded_excess_yaw_damping_checked': True,
+            'bounded_geometric_prediction_checked': True,
             'direct_raw_float32_packing_matches_host_output': True, 'max_continuous_step_c0_c1': max_continuous_step.tolist(),
             'calibration_approved': False, 'scope': 'Numerical construction only; no PSCM response or closed-loop performance claims.',
             'opendbc_import_head': revision(dependency),

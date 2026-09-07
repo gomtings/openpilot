@@ -1,18 +1,19 @@
 """Replay the selected core and its adapter on route90/95 original-time extracts.
 
-The historical pass uses zero yaw and the archived eligibility mask to check
-v1 command compatibility. The separate v2 adapter pass reconstructs input eligibility
+The historical pass uses pinned v1 source and the archived eligibility mask to check
+command compatibility. The separate current adapter pass reconstructs input eligibility
 from service records, never from candidate/baseline output validity. Neither
 pass scores counterfactual motion. Source extracts and archived reports are
 read-only; --output selects a separate destination.
 """
 import argparse
 from collections import Counter
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
 import subprocess
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 
 import numpy as np
 import opendbc
@@ -25,6 +26,22 @@ from openpilot.selfdrive.controls.lib.ford_path import _model_path
 
 
 PINNED_OPENDBC = '72a775d35e54c21ff5c5798acef22016eedcc0a7'
+V1_REVISION = '5fc16abc7662020706e29f57d31a6d5e2bc1293a'
+V2_REVISION = '744a97d9bc08d8743b250eceff7c88585b5480de'
+
+
+@lru_cache(maxsize=2)
+def load_controller(commit):
+  """Load exact archived Python source for offline comparisons, never production."""
+  if len(commit) != 40 or any(c not in '0123456789abcdef' for c in commit):
+    raise ValueError('A full immutable commit hash is required')
+  filename = 'openpilot/selfdrive/controls/lib/ford_model_action.py'
+  root = Path(__file__).resolve().parents[2]
+  source = subprocess.check_output(['git', '-C', str(root), 'show', f'{commit}:{filename}'])
+  module = ModuleType(f'ford_model_action_{commit}')
+  exec(compile(source, f'{commit}:{filename}', 'exec'), module.__dict__)
+  module.source_sha256 = hashlib.sha256(source).hexdigest()
+  return module
 
 
 def revision(directory):
@@ -124,7 +141,8 @@ def run(directory, output):
                     (cs['valid'] == 1) & (cs['can_valid'] == 1) & (params['valid'] == 1) &
                     (t-params['t'] >= 0.) & (t-params['t'] <= .15) & exact & (model['valid'] == 1))
   dt = np.r_[.01, np.diff(t)]
-  core, entry_clock_core, adapter, wire = ModelActionController(), ModelActionController(), FordModelActionController(), WireCheck()
+  archived = load_controller(V1_REVISION)
+  core, entry_clock_core, adapter, wire = archived.ModelActionController(), ModelActionController(), FordModelActionController(), WireCheck()
   commands = np.zeros((len(t), 4))
   adapted = np.zeros_like(commands)
   valid = np.zeros(len(t), bool)
@@ -143,8 +161,7 @@ def run(directory, output):
     adapter_valid[i] = new_gate.valid
     reasons[adapter.diagnostics['status']] += 1
     wire.check(new_gate)
-    # Current core receives actual yaw and a fresh 10 ms engagement tick;
-    # the archived v1 construction above deliberately receives zero yaw.
+    # Current core receives actual yaw and a fresh 10 ms engagement tick.
     entry_dt = dt[i] if i > 0 and baseline['valid'][i-1] else .01
     expected_adapter = entry_clock_core.update(selected_model, controls['desired'][i], speed=cs['speed'][i], dt=entry_dt,
                                                yaw_rate=cs['yaw'][i], active=bool(baseline['valid'][i]))
@@ -199,7 +216,8 @@ def run(directory, output):
             'timing': 'Original controls publication timestamps proxy computation time; repeated frames and gaps retained. No identified delay.',
             'eligibility': 'Adapter checks recorded services independently; full SubMaster health is unavailable. Core uses archived validity.',
             'reference': 'Recorded controlsState.desiredCurvature, already selected/limited. These two routes have no maneuver publications.',
-            'host_yaw': 'Extract cs.yaw equals -carState.yawRate; v2 adapter uses it for bounded damping. Archived core pass uses zero yaw.',
+            'host_yaw': 'Extract cs.yaw equals -carState.yawRate; current adapter uses it for bounded damping.',
+            'archived_core_revision': V1_REVISION, 'archived_core_source_sha256': archived.source_sha256,
             'cohorts': cohorts, 'workspace_head': revision(root), 'opendbc_import_head': revision(dependency),
             'opendbc_import_path': str(dependency),
             'source_sha256': {str(p.resolve()): hashlib.sha256(p.read_bytes()).hexdigest() for p in sources}}

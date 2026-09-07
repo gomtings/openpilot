@@ -1,5 +1,8 @@
 # Experimental Ford offset damping, v2
 
+This document and its validation counts describe the archived v2 source. The
+[current v3 experiment](ford_model_action_prediction.md) adds bounded path prediction.
+
 Segment 10 of the supplied route9b recording shows measured turning persisting
 as requested right curvature falls. At about 643.0 s, before strong driver
 intervention, device-gyro curvature is approximately 0.01786/m against a
@@ -75,11 +78,11 @@ Use the dependency setup and suite command in the [drive-test guide](ford_model_
 The new route replay requires the deployment opendbc pin recorded there:
 
 ```sh
-python -m tools.ford_pscm_lab.damping_replay /path/to/complete/rlogs --output /path/to/separate/results
+python -m tools.ford_pscm_lab.damping_replay /path/to/complete/rlogs --baseline v1 --candidate v2 --window segment10_entry_peak 637 640 --window segment10_exit_before_strong_input 642.7 643.852 --output /path/to/separate/results
 python -m tools.ford_pscm_lab.stress_model_action --cycles 200000 --seed 20260907 --opendbc-revision c21a9013700734dd20b09e05aa68329ad8cc20f9 --output /path/to/stress.json
 ```
 
-The same default-off Sunnylink toggle selects v2; no additional setting is
+At the v2 revision, the same default-off Sunnylink toggle selects v2; no additional setting is
 introduced. Updating an installation with the toggle already enabled selects
 v2 at the next controlsd startup. `calibration_approved=false` remains explicit.
 No physical fix, hardware build or device boot is established by these checks.

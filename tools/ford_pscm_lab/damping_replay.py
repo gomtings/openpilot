@@ -1,4 +1,4 @@
-"""Compare v1 construction and v2 damping on complete local rlogs, offline.
+"""Compare pinned selected-action controllers or current code on complete rlogs.
 
 Original controls publication times proxy computation time. Consumed model
 timestamps are exact; carState is causal and carControl is matched within 5 ms.
@@ -16,8 +16,7 @@ import zstandard
 
 from openpilot.cereal import log
 from openpilot.selfdrive.controls.lib import ford_model_action
-from openpilot.selfdrive.controls.lib.ford_model_action import FordModelActionController
-from tools.ford_pscm_lab.model_action_replay import WireCheck, field_checks, sample, verify_dependency
+from tools.ford_pscm_lab.model_action_replay import V1_REVISION, V2_REVISION, WireCheck, field_checks, load_controller, sample, verify_dependency
 
 
 DEPLOYMENT_OPENDBC = 'c21a9013700734dd20b09e05aa68329ad8cc20f9'
@@ -69,11 +68,14 @@ def extract(directory):
   return streams, models, sources, t0
 
 
-def run(directory, output):
+def run(directory, output, baseline_version='v1', candidate_version='v2', windows=()):
   directory, output = directory.resolve(), output.resolve()
   if output == directory or directory in output.parents:
     raise ValueError('Output must be outside the source route directory')
   verify_dependency(DEPLOYMENT_OPENDBC)
+  revisions = {'v1': V1_REVISION, 'v2': V2_REVISION}
+  baseline_source = load_controller(revisions[baseline_version])
+  candidate_source = ford_model_action if candidate_version == 'current' else load_controller(revisions[candidate_version])
   streams, models, sources, t0 = extract(directory)
   controls, model = streams['controls'], streams['model']
   t = controls['t']
@@ -84,7 +86,7 @@ def run(directory, output):
   services = ((controls['valid'] == 1) & (cc['valid'] == 1) & (abs(cc['t']-t) < .005) &
               (cs['valid'] == 1) & (cs['can_valid'] == 1) & (params['valid'] == 1) &
               (t-params['t'] >= 0.) & (t-params['t'] <= .15) & exact & (model['valid'][mi] == 1))
-  baseline, candidate, wire = FordModelActionController(), FordModelActionController(), WireCheck()
+  baseline, candidate, wire = baseline_source.FordModelActionController(), candidate_source.FordModelActionController(), WireCheck()
   before, after = np.zeros((len(t), 4)), np.zeros((len(t), 4))
   eligible = np.zeros(len(t), bool)
   reasons = Counter()
@@ -92,9 +94,7 @@ def run(directory, output):
     kwargs = {'speed': cs['speed'][i], 'now': now, 'measurement_time': cs['t'][i], 'model_time': model['t'][mi[i]],
               'reference_time': model['t'][mi[i]], 'active': bool(cc['active'][i]), 'valid': bool(services[i])}
     geometry = models[mi[i]] if exact[i] else None
-    # Zero yaw retains v1 targets. Both passes enforce the actual yaw range gate.
-    kwargs['valid'] &= bool(np.isfinite(cs['yaw'][i]) and abs(cs['yaw'][i]) <= 3.)
-    a = baseline.update(geometry, controls['desired'][i], yaw_rate=0., **kwargs)
+    a = baseline.update(geometry, controls['desired'][i], yaw_rate=cs['yaw'][i], **kwargs)
     b = candidate.update(geometry, controls['desired'][i], yaw_rate=cs['yaw'][i], **kwargs)
     assert a.valid == b.valid and a.path_angle == b.path_angle
     before[i] = a.path_offset, a.path_angle, a.curvature, a.curvature_rate
@@ -113,9 +113,12 @@ def run(directory, output):
   relative = t-t0
   masks = {'eligible': eligible, 'driver_clean': clean,
            'driver_clean_low_request_above_8mps': clean & (cs['speed'] >= 8.) & (abs(controls['desired'])*cs['speed']**2 < .15),
-           'turn': clean & (abs(controls['desired'])*cs['speed']**2 >= .5),
-           'segment10_entry_peak': eligible & (relative >= 637.) & (relative < 640.),
-           'segment10_exit_before_strong_input': eligible & (relative >= 642.7) & (relative < 643.852)}
+           'turn': clean & (abs(controls['desired'])*cs['speed']**2 >= .5)}
+  for label, start, end in windows:
+    start, end = float(start), float(end)
+    if not np.isfinite([start, end]).all() or start >= end or label in masks:
+      raise ValueError('Focus windows need unique labels and finite increasing bounds')
+    masks[label] = eligible & (relative >= start) & (relative < end)
   weight = np.minimum(np.diff(t, append=t[-1]+.01), .03)
   difference = abs(before[:, 0]-after[:, 0])
   cohorts = {}
@@ -125,8 +128,11 @@ def run(directory, output):
                        'changed_c0_cycles': int((difference[mask] > 1e-9).sum()),
                        'mean_absolute_c0_change_m': float(np.average(difference[mask], weights=weight[mask])),
                        'max_absolute_c0_change_m': float(difference[mask].max()),
-                       'v1_peak_absolute_c0_m': float(abs(before[mask, 0]).max()),
-                       'v2_peak_absolute_c0_m': float(abs(after[mask, 0]).max())}
+                       'increased_absolute_c0_cycles': int((abs(after[mask, 0])-abs(before[mask, 0]) > 1e-9).sum()),
+                       'decreased_absolute_c0_cycles': int((abs(before[mask, 0])-abs(after[mask, 0]) > 1e-9).sum()),
+                       'driver_input_percent': float(100*np.average((cs['pressed'][mask] == 1) | (abs(cs['torque'][mask]) > 1.), weights=weight[mask])),
+                       'baseline_peak_absolute_c0_m': float(abs(before[mask, 0]).max()),
+                       'candidate_peak_absolute_c0_m': float(abs(after[mask, 0]).max())}
   paired = eligible & (recorded['valid'] == 1) & (recorded['active'] == 1) & (abs(recorded['t']-t) < .005)
   actual = np.column_stack((recorded['c0'], recorded['c1']))
   error = abs(before[:, :2]-actual)
@@ -134,11 +140,15 @@ def run(directory, output):
             'cycles': len(t), 'eligible_cycles': int(eligible.sum()), 'status_counts': dict(reasons),
             'c1_exactly_unchanged': True, 'same_validity': True, 'field_slew_zero_c2_c3_pass': True,
             'float32_can_round_trips': wire.count, 'cohorts': cohorts,
-            'v1_reconstruction_vs_recorded': {'paired_cycles': int(paired.sum()),
+            'baseline_commands_vs_recorded_publications': {'paired_cycles': int(paired.sum()),
               'within_one_quantum_cycles': int(np.all(error[paired] <= [.010001, .0005001], axis=1).sum()),
               'maximum_absolute_error_c0_c1': np.max(error[paired], axis=0).tolist()},
             'timing': 'Publication-time proxy, causal carState, exact consumed model; full SubMaster health unavailable.',
-            'baseline': 'Current adapter with zero yaw retains v1 targets and actual-yaw sanity gate.',
+            'baseline_version': baseline_version, 'baseline_revision': revisions[baseline_version],
+            'candidate_version': candidate_version, 'candidate_revision': revisions.get(candidate_version, 'working_tree'),
+            'focus_windows': windows, 'baseline_source_sha256': baseline_source.source_sha256,
+            'candidate_source_sha256': (hashlib.sha256(Path(ford_model_action.__file__).read_bytes()).hexdigest()
+                                        if candidate_version == 'current' else candidate_source.source_sha256),
             'source_rlog_sha256': sources, 'opendbc_head': DEPLOYMENT_OPENDBC,
             'source_sha256': {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in (Path(__file__), Path(ford_model_action.__file__))}}
   output.mkdir(parents=True, exist_ok=True)
@@ -152,5 +162,8 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument('rlog_directory', type=Path)
   parser.add_argument('--output', type=Path, required=True)
+  parser.add_argument('--baseline', choices=['v1', 'v2'], default='v1')
+  parser.add_argument('--candidate', choices=['v2', 'current'], default='v2')
+  parser.add_argument('--window', action='append', nargs=3, metavar=('LABEL', 'START_SECONDS', 'END_SECONDS'), default=[])
   args = parser.parse_args()
-  run(args.rlog_directory, args.output)
+  run(args.rlog_directory, args.output, args.baseline, args.candidate, args.window)

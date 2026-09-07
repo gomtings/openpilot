@@ -1,3 +1,5 @@
+import hashlib
+
 import numpy as np
 import pytest
 
@@ -23,6 +25,35 @@ def test_dependency_mismatch_fails_before_replaying(monkeypatch):
   monkeypatch.setattr(replay, 'revision', lambda _: 'wrong_revision')
   with pytest.raises(ValueError, match='Expected opendbc'):
     replay.verify_dependency()
+
+
+@pytest.mark.parametrize('revision', ['HEAD', '744a97d9b', '--help', 'z'*40])
+def test_archived_controller_requires_an_immutable_commit(revision):
+  with pytest.raises(ValueError, match='immutable'):
+    replay.load_controller(revision)
+
+
+def test_archived_loader_uses_exact_source_and_records_its_hash(monkeypatch):
+  # Unit tests must also work in shallow checkouts. Full replays verify real archived code.
+  calls = []
+  source = b'archived_value = 42\n'
+
+  def read_source(command):
+    calls.append(command)
+    return source
+
+  monkeypatch.setattr(replay.subprocess, 'check_output', read_source)
+  replay.load_controller.cache_clear()
+  try:
+    for commit in (replay.V1_REVISION, replay.V2_REVISION):
+      module = replay.load_controller(commit)
+      assert module.archived_value == 42
+      assert module.source_sha256 == hashlib.sha256(source).hexdigest()
+      assert calls[-1][-2:] == ['show', f'{commit}:openpilot/selfdrive/controls/lib/ford_model_action.py']
+      assert replay.load_controller(commit) is module
+    assert len(calls) == 2
+  finally:
+    replay.load_controller.cache_clear()
 
 
 def test_explicit_stress_dependency_still_requires_an_exact_match(monkeypatch):

@@ -81,7 +81,7 @@ def test_repeated_measurements_do_not_freeze_slew_or_cache_invalid_model_geometr
   controller = FordModelActionController()
   for i in range(10):
     result = update(controller, 1.+i*.01, measurement_time=1., model_time=1., reference_time=1.)
-  assert result.path_offset == pytest.approx(.4)
+  assert result.path_offset == pytest.approx(.3)  # Preview accounts for selected turning toward the offset path.
   assert result.path_angle == pytest.approx(.05)
   broken = straight(.4)
   broken.position.y[5] = math.nan
@@ -163,12 +163,17 @@ class Subscriptions:
 
 @pytest.mark.parametrize('maneuver', [False, True])
 @pytest.mark.parametrize('host_yaw', [.0072, .3])
-def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipeline, maneuver, host_yaw):
+@pytest.mark.parametrize('initial_curvature', [0., .005])
+def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipeline, maneuver, host_yaw, initial_curvature):
   call, publication = pipeline
   sm = Subscriptions(maneuver)
   controls = startup()
   controller = controls.ford_path_controller
-  controls.sm, controls.desired_curvature, controls.curvature = sm, 0., 0.
+  initial_curvature *= -1 if maneuver else 1
+  controls.sm, controls.desired_curvature, controls.curvature = sm, initial_curvature, 0.
+  if initial_curvature:
+    # Start at the old target so startup slew cannot hide prediction on the real call path.
+    controller.core.c0, controller.core.c1 = .4, 20.*initial_curvature
   model = straight(.4)
   model.action = SimpleNamespace(desiredCurvature=.1)
   cc = structs.CarControl(latActive=True)
@@ -176,10 +181,12 @@ def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipe
   environment = {'self': controls, 'CS': cs, 'CC': cc, 'actuators': cc.actuators, 'model_v2': model, 'lp': SimpleNamespace(roll=0.),
                      'clip_curvature': clip_curvature, 'time': SimpleNamespace(monotonic=lambda: 1.)}
   exec(call, environment)
-  expected_curvature = (-1 if maneuver else 1)*.000125
+  expected_curvature = initial_curvature+(-1 if maneuver else 1)*.000125
   assert controls.desired_curvature == pytest.approx(expected_curvature)
   assert controls.ford_path.path_angle == pytest.approx(20.*expected_curvature)
   expected_offset = .04 if host_yaw < .02 else .01
+  if initial_curvature:
+    expected_offset = .44 if maneuver and host_yaw < .02 else .36
   assert controls.ford_path.path_offset == pytest.approx(expected_offset)
   assert controller.diagnostics['yaw_rate'] == host_yaw
   assert cc.latActive and cc.actuators.curvature == 0.
