@@ -1,5 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import os
+import sys
+import threading
 import time
 import wave
 
@@ -30,6 +33,16 @@ class GearTransition:
     self.previous = gear
     self.last_time = timestamp
     return transition
+
+
+def lower_loader_priority():
+  if sys.platform == "linux":
+    try:
+      tid = threading.get_native_id()
+      os.sched_setscheduler(tid, os.SCHED_OTHER, os.sched_param(0))
+      os.setpriority(os.PRIO_PROCESS, tid, max(10, os.getpriority(os.PRIO_PROCESS, tid)))
+    except OSError:
+      cloudlog.exception("Unable to lower custom audio loader priority")
 
 
 def load_audio(filename):
@@ -79,7 +92,7 @@ class CustomAudio:
   def __init__(self):
     self.player = AudioPlayer()
     self.transition = GearTransition()
-    self.loader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="custom-audio-source")
+    self.loader = ThreadPoolExecutor(max_workers=1, thread_name_prefix="custom-audio-source", initializer=lower_loader_priority)
     self.pending = None
 
   def update(self, messages):
@@ -110,4 +123,3 @@ class CustomAudio:
       except Exception:
         cloudlog.exception("Unable to load custom audio")
       self.pending = None
-

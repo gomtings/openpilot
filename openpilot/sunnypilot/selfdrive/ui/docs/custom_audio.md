@@ -11,6 +11,8 @@ Each gear change plays `<gear>.wav`: `park.wav`, `drive.wav`, `sport.wav`, `reve
 - Alert volume is unchanged. Custom audio may be reduced further to prevent clipping when both sounds are loud.
 - Startup and recovery from unknown/invalid gear data or data gaps establish a silent baseline.
 
+WAV loading runs on a low-priority worker thread on Linux (nice +10). Playback shares the existing safety-alert output callback; its priority is unchanged.
+
 No settings or dismiss control. Replace or remove files to change future playback.
 
 Convert files with:
