@@ -11,7 +11,8 @@ AUDIO_DIR = Path("/data/media/0/custom_audio")
 SAMPLE_RATE = 48000
 MAX_SECONDS = 300
 GEAR_TIMEOUT = 0.5
-RESUME_FRAMES = int(0.15 * SAMPLE_RATE)
+DUCK_FRAMES = int(0.05 * SAMPLE_RATE)
+RESTORE_FRAMES = int(0.15 * SAMPLE_RATE)
 
 
 class GearTransition:
@@ -54,7 +55,6 @@ class AudioPlayer:
     self.samples = np.empty(0, dtype=np.float32)
     self.position = 0
     self.gain = 1.0
-    self.paused = False
 
   def render(self, frames, alert_active):
     command = self.command
@@ -63,23 +63,15 @@ class AudioPlayer:
       self.samples = command if command is not None else np.empty(0, dtype=np.float32)
       self.position = 0
       self.gain = 1.0
-      self.paused = False
     out = np.zeros(frames, dtype=np.float32)
     if self.position == len(self.samples):
       return out
-    if alert_active:
-      self.paused = True
-      self.gain = 0.0
-      return out
-    if self.paused:
-      self.paused = False
-      self.gain = 0.0
     n = min(frames, len(self.samples) - self.position)
-    gains = np.minimum(1, self.gain + np.arange(n) / RESUME_FRAMES)
+    step = -0.5 / DUCK_FRAMES if alert_active else 0.5 / RESTORE_FRAMES
+    gains = np.clip(self.gain + np.arange(n) * step, 0.5, 1.0)
     out[:n] = self.samples[self.position:self.position + n] * gains
     self.position += n
-    if n:
-      self.gain = float(gains[-1])
+    self.gain = float(np.clip(self.gain + n * step, 0.5, 1.0))
     return out
 
 
