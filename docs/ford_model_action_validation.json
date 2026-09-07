@@ -1,0 +1,220 @@
+{
+  "date": "2026-09-07",
+  "baseline_commit": "c4b3c55c826fca1ce09618e418e95f0a24478d96",
+  "calibration_approved": false,
+  "production_selector_changed": false,
+  "vehicle_settings_changed": false,
+  "panda_safety_changed": false,
+  "scope": "Offline command construction, adapter integration, numerical fault probes and Ford regression tests. Physical response remains unvalidated.",
+  "controller_size": {
+    "total_lines": 131,
+    "code_lines_excluding_blanks_comments_docstrings": 86,
+    "core_persistent_values": 2,
+    "adapter_timestamps": 3
+  },
+  "opendbc_import_head": "72a775d35e54c21ff5c5798acef22016eedcc0a7",
+  "tests": {
+    "ford_suite": "264 passed, 150 subtests passed in 14.29s",
+    "new_core_adapter_tests": 107,
+    "new_replay_validator_tests": 13,
+    "controller_coverage": {
+      "statements": 78,
+      "missing_statements": 0,
+      "branches": 24,
+      "partial_branches": 0,
+      "percent": 100
+    },
+    "ruff": "pass",
+    "ty_controller_and_lab": "pass"
+  },
+  "routes": {
+    "route95": {
+      "cycles": 54738,
+      "core_active_cycles": 37614,
+      "core_exact_archived_match": true,
+      "cohorts_reproduced": true,
+      "adapter_active_cycles": 37614,
+      "adapter_status_counts": {
+        "inactive": 17124,
+        "active": 37614
+      },
+      "adapter_exact_match_with_fresh_engagement_dt": true,
+      "core_active_path_shorter_than_7m_cycles": 44,
+      "adapter_validity_differs_from_archive_cycles": 0,
+      "adapter_command_differs_from_archive_cycles": 59,
+      "adapter_max_absolute_command_difference_c0_c1": [
+        0.010000000000000675,
+        0.0010000000000000009
+      ],
+      "field_slew_zero_c2_c3_pass": true,
+      "float32_can_round_trips": 109476,
+      "turn_speed_15_55": {
+        "seconds": 33.332073582999925,
+        "core_c0_c1_rms": [
+          0.07257996778378971,
+          0.03628926246224237
+        ],
+        "recorded_v8_c0_c1_rms": [
+          0.3416081588451539,
+          0.027322786376822172
+        ],
+        "adapter_eligible_seconds": 33.332073582999925,
+        "adapter_c0_c1_rms": [
+          0.07257996778378971,
+          0.03628926246224237
+        ]
+      },
+      "input_sha256": {
+        "route.npz": "6e5438867ea618e53ca395b60ff4b9b146256f1bf6f07dc8e92d663286074154",
+        "encoder_comparison.npz": "23bd05c4b6400299844acaba1d97051c96c23c682bf17b46e89e7f2cca5fce38",
+        "pose_replay.npz": "9cfbb3c6f0b1fdb7e3d38e6b64b8c94cffbcc9fabe41f6344d84a9b657b6af9b"
+      },
+      "report_sha256": "cf4e3804f2ebdb0e50f3c49636bf60a30e3c1180411b582826a115970ab972fc"
+    },
+    "route90": {
+      "cycles": 78812,
+      "core_active_cycles": 73055,
+      "core_exact_archived_match": true,
+      "cohorts_reproduced": true,
+      "adapter_active_cycles": 73055,
+      "adapter_status_counts": {
+        "inactive": 5757,
+        "active": 73055
+      },
+      "adapter_exact_match_with_fresh_engagement_dt": true,
+      "core_active_path_shorter_than_7m_cycles": 0,
+      "adapter_validity_differs_from_archive_cycles": 0,
+      "adapter_command_differs_from_archive_cycles": 19,
+      "adapter_max_absolute_command_difference_c0_c1": [
+        0.020000000000000462,
+        0.0020000000000000018
+      ],
+      "field_slew_zero_c2_c3_pass": true,
+      "float32_can_round_trips": 157624,
+      "turn_speed_15_55": {
+        "seconds": 47.53485040600012,
+        "core_c0_c1_rms": [
+          0.08686835454709245,
+          0.043216347944464766
+        ],
+        "recorded_v8_c0_c1_rms": [
+          0.4471065308273131,
+          0.030663943784303503
+        ],
+        "adapter_eligible_seconds": 47.53485040600012,
+        "adapter_c0_c1_rms": [
+          0.08686835454709245,
+          0.043216347944464766
+        ]
+      },
+      "input_sha256": {
+        "route.npz": "51e8c26eedde253e171af47d704c1967ba45ae6825d883393bec1fb9e00251c1",
+        "encoder_comparison.npz": "7a625d3ed5cbd8013d1028aa3bc421740551dcae5c3d60981208bd047af9794c",
+        "pose_replay.npz": "4457ccc0868354749da5b72c1dea0faf750f783dfdc87038101288fdcba1e707"
+      },
+      "report_sha256": "b95247bdf6bbec16e5dc4781eaf7a678aca787418251cd161f6438e3173ad490"
+    }
+  },
+  "stress": {
+    "seed": 20260907,
+    "random_cycles": 200000,
+    "mirrored_core_updates": 200000,
+    "invalid_or_inactive_resets": 3537,
+    "field_boundary_cases": 18138,
+    "float32_can_round_trips": 218138,
+    "analytic_targets_scalar_slew_and_mirror_checks_pass": true,
+    "direct_raw_float32_packing_matches_host_output": true,
+    "max_continuous_step_c0_c1": [
+      0.40000000000000147,
+      0.05000000000000002
+    ],
+    "calibration_approved": false,
+    "scope": "Numerical construction only; no PSCM response or closed-loop performance claims.",
+    "opendbc_import_head": "72a775d35e54c21ff5c5798acef22016eedcc0a7"
+  },
+  "mutation_checks": {
+    "mutations": [
+      {
+        "mutation": "halve_heading",
+        "detected_by_tests": true,
+        "failed_tests": 9
+      },
+      {
+        "mutation": "cap_heading_preview",
+        "detected_by_tests": true,
+        "failed_tests": 9
+      },
+      {
+        "mutation": "erase_centering",
+        "detected_by_tests": true,
+        "failed_tests": 15
+      },
+      {
+        "mutation": "slow_c0_to_c1_rate",
+        "detected_by_tests": true,
+        "failed_tests": 11
+      },
+      {
+        "mutation": "retain_invalid_state",
+        "detected_by_tests": true,
+        "failed_tests": 18
+      },
+      {
+        "mutation": "ignore_model_freshness",
+        "detected_by_tests": true,
+        "failed_tests": 2
+      },
+      {
+        "mutation": "ignore_model_clock_rollback",
+        "detected_by_tests": true,
+        "failed_tests": 1
+      },
+      {
+        "mutation": "reverse_c0_wire_sign",
+        "detected_by_tests": true,
+        "failed_tests": 11
+      }
+    ],
+    "all_detected": true
+  },
+  "native_test_dependency": {
+    "scope": "Native dependency for inherited Params selection test only; copied existing local build, not rebuilt.",
+    "source_library": "/Users/ibpersonal/.codex/worktrees/3548/sunnypilot/openpilot/common/libparams_c.dylib",
+    "sha256": "ddde738108eab18b75f085c865c43aa197fd79a0384b390b1515ff90116e20e0",
+    "byte_identical_source_files": [
+      "openpilot/common/params.cc",
+      "openpilot/common/params.h",
+      "openpilot/common/params_c.cc",
+      "openpilot/common/params.py",
+      "openpilot/common/params_keys.h",
+      "openpilot/common/queue.h",
+      "openpilot/common/util.cc",
+      "openpilot/common/util.h",
+      "openpilot/common/hardware/hw.h"
+    ]
+  },
+  "review": {
+    "standards_findings": 0,
+    "spec_findings": 0,
+    "method": "Independent parallel read-only reviews; 120 focused tests independently passed."
+  },
+  "source_sha256": {
+    "openpilot/selfdrive/controls/lib/ford_model_action.py": "cb6353f00f2f5c84df4e606c6b7e20650f8c1e908b9fd71890f72aa4a5e42592",
+    "openpilot/selfdrive/controls/tests/test_ford_model_action.py": "c3b971622cc4041575aeec1826d45b76cebab9a2f77b2b9525c85d4184961295",
+    "openpilot/selfdrive/controls/tests/test_ford_model_action_adapter.py": "5aaa29c1f11080b7df0165fd0202a29b065053809e5f9c4b9ed8abfcce47e41b",
+    "tools/ford_pscm_lab/__init__.py": "db4b8b7d2e317ed34ca0ec220bf9d53e7b80a23e766f4e1cb2c8224dada45f2e",
+    "tools/ford_pscm_lab/model_action_replay.py": "c114c479bd22e4fc61a3e8d3ee7fae5d71d1d80ec4b952faad8f8f3692fb1508",
+    "tools/ford_pscm_lab/stress_model_action.py": "a78a50eed1f801f3b096d694ab8c2fd70804b6c250465b4152f38d83770a982b",
+    "tools/ford_pscm_lab/test_model_action_replay.py": "09d024c59d44b83ec081d6416d0f946a7719a73f22213af1f4ddc03dc4e6f4ac"
+  },
+  "artifacts": {
+    "directory": ".cache/ford_model_action",
+    "route_reports": [
+      "route95/report.json",
+      "route90/report.json"
+    ],
+    "stress_report": "stress.json",
+    "mutation_report": "mutations/report.json",
+    "test_log": "ford_suite.txt"
+  }
+}
