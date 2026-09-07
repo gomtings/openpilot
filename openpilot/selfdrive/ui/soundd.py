@@ -211,7 +211,9 @@ class Soundd(QuietMode):
 
 
 def main():
-  s = Soundd()
+  from openpilot.sunnypilot.selfdrive.ui.soundd import SounddSP
+
+  s = SounddSP()
   s.soundd_thread()
 
 
