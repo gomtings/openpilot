@@ -133,6 +133,16 @@ class TestParams(OpenpilotTestCase):
     assert self.params.get("LiveParametersV2") is None
     assert self.params.get("LiveParametersV2", return_default=True) is None
 
+  def test_filtered_keys_are_distinct_registered_strings(self):
+    registered = set(self.params.all_keys())
+    for flag in (ParamKeyFlag.PERSISTENT, ParamKeyFlag.BACKUP, ParamKeyFlag.CLEAR_ON_MANAGER_START):
+      filtered = self.params.all_keys(flag)
+      assert len(filtered) > 1
+      assert len(filtered) == len(set(filtered))
+      assert set(filtered) <= registered
+      assert all(key.decode('utf-8') for key in filtered)
+      assert self.params.all_keys(flag) == filtered
+
   def test_params_get_type(self):
     # json
     self.params.put("ApiCache_FirehoseStats", {"a": 0}, block=True)

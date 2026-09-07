@@ -168,12 +168,15 @@ ParamsBuffer params_key_at(ParamsHandle *handle, size_t index) noexcept {
 
 size_t params_keys_by_flag(ParamsHandle *handle, uint32_t flag, ParamsBuffer *out, size_t out_size) noexcept {
   return translate_exceptions(size_t{0}, [&]() {
-    auto filtered = handle->params.allKeys(static_cast<ParamKeyFlag>(flag));
-    size_t count = std::min(filtered.size(), out_size);
-    for (size_t i = 0; i < count; i++) {
-      out[i] = return_string(filtered[i]);
+    size_t count = 0;
+    for (const auto &key : handle->keys) {
+      if (flag == ALL || (handle->params.getKeyFlag(key) & flag)) {
+        // Each buffer borrows a different string, stable for the handle's lifetime.
+        if (count < out_size) out[count] = {key.data(), key.size()};
+        ++count;
+      }
     }
-    return filtered.size();
+    return count;
   });
 }
 

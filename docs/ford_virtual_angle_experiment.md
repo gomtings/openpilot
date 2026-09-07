@@ -1,5 +1,10 @@
 # Ford C2-free model-pose tracking with measured feedback
 
+This experiment is retired. Its implementation, setting and dedicated tests
+were removed from the selected-action drive-test branch. For current setup,
+see [Ford selected-action drive testing](ford_model_action_drive_test.md).
+The material below is historical; it does not describe an available toggle.
+
 Hypothesis `model-pose-c0-c1-feedback-v8` retains the model-pose C0/C1 base
 and adds two guarded release policies. When measured turning exceeds both
 current and delayed requests, a separate output guard prevents same-direction

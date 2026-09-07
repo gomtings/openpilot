@@ -25,6 +25,15 @@ def test_dependency_mismatch_fails_before_replaying(monkeypatch):
     replay.verify_dependency()
 
 
+def test_explicit_stress_dependency_still_requires_an_exact_match(monkeypatch):
+  monkeypatch.setattr(replay, 'revision', lambda _: 'deployment_commit')
+  replay.verify_dependency('deployment_commit')
+  with pytest.raises(ValueError, match='Expected opendbc'):
+    replay.verify_dependency('different_commit')
+  with pytest.raises(ValueError, match='Expected opendbc'):
+    replay.verify_dependency()  # Historical replay never silently follows the local checkout.
+
+
 def test_source_route_directory_cannot_be_overwritten(tmp_path):
   with pytest.raises(ValueError, match='outside the source'):
     replay.run(tmp_path, tmp_path/'selected_controller')

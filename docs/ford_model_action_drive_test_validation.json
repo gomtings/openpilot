@@ -1,0 +1,140 @@
+{
+  "date": "2026-09-07",
+  "baseline_commit": "7ca3c6e3b3e659c6f446039501c5826bbd14092e",
+  "branch": "codex/ford-model-action-drive-test",
+  "scope": "Default-off Sunnylink selection and v8 retirement; offline validation only. No device installation or physical performance validation.",
+  "calibration_approved": false,
+  "production_selector_changed": true,
+  "toggle": "FordModelActionController",
+  "default_enabled": false,
+  "v8_removed": true,
+  "panda_safety_changed": false,
+  "opendbc_submodule_changed": false,
+  "deployment_opendbc_head": "c21a9013700734dd20b09e05aa68329ad8cc20f9",
+  "controller_size": {
+    "total_lines": 145,
+    "code_lines_excluding_blanks_comments_docstrings": 95,
+    "core_persistent_values": 2,
+    "adapter_timestamps": 3,
+    "removed_v8_module_lines": 469
+  },
+  "tests": {
+    "combined_ford_params_sunnylink_suite": "284 passed, 26 subtests passed in 2.63s",
+    "suite_log_sha256": "2e223a507f0630481cf6f83b9f8893d226f3f4273a79a09fc35905aa875b1d2c",
+    "coverage": {
+      "covered_lines": 87,
+      "num_statements": 87,
+      "percent_covered": 100.0,
+      "percent_covered_display": "100",
+      "missing_lines": 0,
+      "excluded_lines": 0,
+      "percent_statements_covered": 100.0,
+      "percent_statements_covered_display": "100",
+      "num_branches": 26,
+      "num_partial_branches": 0,
+      "covered_branches": 26,
+      "missing_branches": 0,
+      "percent_branches_covered": 100.0,
+      "percent_branches_covered_display": "100"
+    },
+    "ruff": "pass",
+    "ty_controller_and_lab": "pass",
+    "settings_compiler_check": "pass",
+    "standards_review_remaining_findings": 0,
+    "spec_review_remaining_findings": 0,
+    "resolved_review_finding": "Updated YAML authoring source and regenerated settings JSON before final compiler/schema suite."
+  },
+  "routes": {
+    "route95": {
+      "cycles": 54738,
+      "core_active_cycles": 37614,
+      "core_exact_archived_match": true,
+      "cohorts_reproduced": true,
+      "adapter_active_cycles": 37614,
+      "adapter_exact_match_with_fresh_engagement_dt": true,
+      "adapter_validity_differs_from_archive_cycles": 0,
+      "adapter_command_differs_from_archive_cycles": 59,
+      "adapter_max_absolute_command_difference_c0_c1": [
+        0.010000000000000675,
+        0.0010000000000000009
+      ],
+      "field_slew_zero_c2_c3_pass": true,
+      "float32_can_round_trips": 109476,
+      "opendbc_import_head": "72a775d35e54c21ff5c5798acef22016eedcc0a7",
+      "report_sha256": "72fab710dc81c8c7d9b75d371b97fec32402d3b01fa05517dfa814d8daff3134"
+    },
+    "route90": {
+      "cycles": 78812,
+      "core_active_cycles": 73055,
+      "core_exact_archived_match": true,
+      "cohorts_reproduced": true,
+      "adapter_active_cycles": 73055,
+      "adapter_exact_match_with_fresh_engagement_dt": true,
+      "adapter_validity_differs_from_archive_cycles": 0,
+      "adapter_command_differs_from_archive_cycles": 19,
+      "adapter_max_absolute_command_difference_c0_c1": [
+        0.020000000000000462,
+        0.0020000000000000018
+      ],
+      "field_slew_zero_c2_c3_pass": true,
+      "float32_can_round_trips": 157624,
+      "opendbc_import_head": "72a775d35e54c21ff5c5798acef22016eedcc0a7",
+      "report_sha256": "cc2224bae597a341697a7681560a077cb209d77e4d060c0850997691c57d32fb"
+    }
+  },
+  "stress": {
+    "seed": 20260907,
+    "random_cycles": 200000,
+    "mirrored_core_updates": 200000,
+    "invalid_or_inactive_resets": 3537,
+    "field_boundary_cases": 18138,
+    "float32_can_round_trips": 218138,
+    "analytic_targets_scalar_slew_and_mirror_checks_pass": true,
+    "direct_raw_float32_packing_matches_host_output": true,
+    "max_continuous_step_c0_c1": [
+      0.40000000000000147,
+      0.05000000000000002
+    ],
+    "calibration_approved": false,
+    "scope": "Numerical construction only; no PSCM response or closed-loop performance claims.",
+    "opendbc_import_head": "c21a9013700734dd20b09e05aa68329ad8cc20f9"
+  },
+  "total_float32_can_round_trips": 485238,
+  "native_params": {
+    "source": "Rebuilt locally from this branch with clang++ and generated Capnp headers; ignored test dependency, not committed binary.",
+    "library_sha256": "270bf43241cf7c02cc432cf78ec9411a62d7653ca445695efe785ae82241aa09",
+    "sources_sha256": {
+      "openpilot/common/params_c.cc": "57e3bcc7eba939bc91aadafb4ed1248b8123a8fe5c48fd8530298d966ea4db63",
+      "openpilot/common/params.cc": "a5adacb1d47cb3bf6e0d87d44ce158b41982d7eaf2e8114e32c48d3a6631304c",
+      "openpilot/common/params.h": "ed03d137e126ecd6f1608016020af18c0339fb987e27d0a2aa6830bba396970c",
+      "openpilot/common/params_keys.h": "39d36465f66405843b926ba18473fb6aee81c0f1c7bea87246aa08ffe3f67c58",
+      "openpilot/common/util.cc": "4479ecf72465e8f453d8af78447f7715f02d9397c58a49048f2bbc87a96d6b8a",
+      "openpilot/common/swaglog.cc": "9c2f88a2f1c3c4253b73defb264cc367a13ade23e02928e1d469b5c5833df176"
+    }
+  },
+  "test_dependency_notes": {
+    "python": "/Users/ibpersonal/dev/sunnypilot/.venv/bin/python",
+    "pyyaml": "6.0.3 from local uv cache",
+    "jsonschema": "Local cached package appended after venv to run schema validator without skips",
+    "hardware_build_and_device_boot": "not performed"
+  },
+  "source_sha256": {
+    "docs/ford_model_action_candidate.md": "c968132348d20891a9396f6e69db1315d570505796e19e09ffbb2da748e6e687",
+    "docs/ford_virtual_angle_experiment.md": "da6322f3c3d2d81463e44c50cc6cad1a962f97008ff9425c314da333ebe47a87",
+    "openpilot/common/params_c.cc": "57e3bcc7eba939bc91aadafb4ed1248b8123a8fe5c48fd8530298d966ea4db63",
+    "openpilot/common/params_keys.h": "39d36465f66405843b926ba18473fb6aee81c0f1c7bea87246aa08ffe3f67c58",
+    "openpilot/common/tests/test_params.py": "557a1f616af5fd9f5e623fbee0fd6f44cb059a30c290c68ce2b57e9bcceed081",
+    "openpilot/selfdrive/controls/controlsd.py": "102b383e5beff43b8dd7c219178bef62e8a4b54443ebe682694606862bcd4e7f",
+    "openpilot/selfdrive/controls/lib/ford_model_action.py": "8f3bc5d68e0051776f614a2ccffae84a88f7898dc95bdc12c23dcfe10dfe676a",
+    "openpilot/selfdrive/controls/tests/test_ford_controlsd_logging.py": "1c9448d88d8021e5d34a5dccd14a17c6c1bc64b5531342bfc6d15574d9d3e710",
+    "openpilot/selfdrive/controls/tests/test_ford_model_action_adapter.py": "2c5b14f814e84e59d749f61a43ef1dcfe06253f6e185443fa123c37525ac8466",
+    "openpilot/sunnypilot/sunnylink/settings_ui.json": "9974df3ac4cc58ae78d47848cd18ef4aca1bcbb00edb257f28b4220d92890528",
+    "openpilot/sunnypilot/sunnylink/settings_ui_src/pages/vehicle.yaml": "7a3fa18e562d5a03a5b85c72ee3f3ebeb836c497285dcd9aaad24f8fb4dd6942",
+    "openpilot/sunnypilot/sunnylink/tests/test_settings_schema.py": "3db566612381fd87d3655a3ccff470be7da998c4ea7f6365f53e58cdb9c0ffb7",
+    "tools/ford_pscm_lab/model_action_replay.py": "827a6dc488d554bdf6e87438c6a2a985b3195bf6d01ab09002bfd6049d22a868",
+    "tools/ford_pscm_lab/stress_model_action.py": "2d5c72cc4b8ae214f2f5a19a050fe138f5c2ab0294d92d24e2481af5f8185613",
+    "tools/ford_pscm_lab/test_model_action_replay.py": "ebf6bcd9260745100311521f8e11e85b7aebdd5561ab0876bfc2e802429d6896",
+    "openpilot/selfdrive/controls/tests/test_ford_model_action_selection.py": "f826c6328f0abac2a61f1a0a6f8d119fdbab858e363cb466d84ba9a7783059cd",
+    "docs/ford_model_action_drive_test.md": "1955f83646d1717b4927ab15c9e56fff277db0af090be47631fab04596be279d"
+  }
+}

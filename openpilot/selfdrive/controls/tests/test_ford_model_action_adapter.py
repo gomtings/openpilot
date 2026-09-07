@@ -1,7 +1,7 @@
 """Exercise the candidate through existing selection, publication and CAN code.
 
-Only the test injects the adapter into controlsd's v8 branch. No hardware,
-IPC, selector change or CAN transmission is involved.
+Tests enable the candidate through controlsd's real startup selection.
+No hardware, IPC or CAN transmission is involved.
 """
 import ast
 from collections import defaultdict
@@ -21,8 +21,8 @@ from openpilot.selfdrive.car.helpers import convert_carControlSP
 from openpilot.selfdrive.controls.lib.drive_helpers import clip_curvature
 from openpilot.selfdrive.controls.lib.ford_model_action import FordModelActionController
 from openpilot.selfdrive.controls.lib.ford_path import FordPath
-from openpilot.selfdrive.controls.lib.ford_virtual_angle import PscmStatus
 from openpilot.selfdrive.controls.tests.test_ford_model_action import circle, straight
+from openpilot.selfdrive.controls.tests.test_ford_model_action_selection import startup
 
 
 def update(controller, now=1., **overrides):
@@ -89,10 +89,9 @@ def test_repeated_measurements_do_not_freeze_slew_or_cache_invalid_model_geometr
   assert controller.diagnostics['status'] == 'invalid_path'
 
 
-def test_yaw_offset_driver_and_optional_pscm_status_do_not_change_the_base():
-  controllers = [FordModelActionController() for _ in range(4)]
-  variants = [{}, {'yaw_rate': .0072}, {'yaw_rate': -.0072, 'steering_pressed': True, 'steering_torque': math.nan},
-              {'pscm_status': PscmStatus(0., 0, 3, 0, True, valid=False)}]
+def test_yaw_offset_does_not_change_the_base():
+  controllers = [FordModelActionController() for _ in range(3)]
+  variants = [{}, {'yaw_rate': .0072}, {'yaw_rate': -.0072}]
   for i in range(100):
     outputs = [update(c, 1.+i*.01, **kwargs) for c, kwargs in zip(controllers, variants, strict=True)]
     assert all(out == outputs[0] for out in outputs)
@@ -166,15 +165,15 @@ class Subscriptions:
 def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipeline, maneuver):
   call, publication = pipeline
   sm = Subscriptions(maneuver)
-  controller = FordModelActionController()
-  controls = SimpleNamespace(CP=SimpleNamespace(brand='ford'), sm=sm, ford_virtual_angle=True, ford_path_controller=controller,
-                             desired_curvature=0., curvature=0.)
+  controls = startup()
+  controller = controls.ford_path_controller
+  controls.sm, controls.desired_curvature, controls.curvature = sm, 0., 0.
   model = straight(.4)
   model.action = SimpleNamespace(desiredCurvature=.1)
   cc = structs.CarControl(latActive=True)
   cs = SimpleNamespace(vEgo=20., yawRate=-.0072, canValid=True, steeringPressed=False, steeringTorque=0.)
   environment = {'self': controls, 'CS': cs, 'CC': cc, 'actuators': cc.actuators, 'model_v2': model, 'lp': SimpleNamespace(roll=0.),
-                     'clip_curvature': clip_curvature, 'time': SimpleNamespace(monotonic=lambda: 1.), 'PscmStatus': PscmStatus}
+                     'clip_curvature': clip_curvature, 'time': SimpleNamespace(monotonic=lambda: 1.)}
   exec(call, environment)
   expected_curvature = (-1 if maneuver else 1)*.000125
   assert controls.desired_curvature == pytest.approx(expected_curvature)
@@ -209,12 +208,12 @@ def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipe
 def test_actual_controlsd_service_gates(pipeline, maneuver, failed):
   sm = Subscriptions(maneuver)
   sm.failed.add(failed)
-  controls = SimpleNamespace(CP=SimpleNamespace(brand='ford'), sm=sm, ford_virtual_angle=True,
-                             ford_path_controller=FordModelActionController(), desired_curvature=0., curvature=0.)
+  controls = startup()
+  controls.sm, controls.desired_curvature, controls.curvature = sm, 0., 0.
   cc = structs.CarControl(latActive=True)
   cs = SimpleNamespace(vEgo=20., yawRate=0., canValid=True, steeringPressed=False, steeringTorque=0.)
   model = straight()
   model.action = SimpleNamespace(desiredCurvature=.1)
   exec(pipeline[0], {'self': controls, 'CS': cs, 'CC': cc, 'actuators': cc.actuators, 'model_v2': model, 'lp': SimpleNamespace(roll=0.),
-                         'clip_curvature': clip_curvature, 'time': SimpleNamespace(monotonic=lambda: 1.), 'PscmStatus': PscmStatus})
+                         'clip_curvature': clip_curvature, 'time': SimpleNamespace(monotonic=lambda: 1.)})
   assert controls.ford_path.valid == cc.latActive == (failed == 'lateralManeuverPlan' and not maneuver)

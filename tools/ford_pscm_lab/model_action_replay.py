@@ -31,11 +31,11 @@ def revision(directory):
   return subprocess.check_output(['git', '-C', str(directory), 'rev-parse', 'HEAD'], text=True).strip()
 
 
-def verify_dependency():
+def verify_dependency(expected=PINNED_OPENDBC):
   directory = Path(opendbc.__file__).resolve().parent.parent
   actual = revision(directory)
-  if actual != PINNED_OPENDBC:
-    raise ValueError(f'Expected opendbc {PINNED_OPENDBC}; imported {directory} at {actual}')
+  if actual != expected:
+    raise ValueError(f'Expected opendbc {expected}; imported {directory} at {actual}')
   return directory
 
 
@@ -183,11 +183,11 @@ def run(directory, output):
     np.testing.assert_allclose(cohorts[name]['core_c0_c1_rms'], expected['candidates']['action_heading']['c0_c1_rms'], rtol=0., atol=1e-12)
     np.testing.assert_allclose(cohorts[name]['recorded_v8_c0_c1_rms'], expected['v8_c0_c1_rms'], rtol=0., atol=1e-12)
   root = Path(__file__).resolve().parents[2]
-  sources = [Path(__file__), Path(ford_model_action.__file__), root/'openpilot/selfdrive/controls/lib/ford_virtual_angle.py',
+  sources = [Path(__file__), Path(ford_model_action.__file__),
              root/'openpilot/selfdrive/controls/lib/ford_path.py', directory/'route.npz', directory/'metadata.json',
              directory/'encoder_comparison.npz', directory/'encoder_comparison.json', directory/'pose_candidate/pose_replay.npz']
   report = {'scope': 'Command construction and adapter reconstruction only; no counterfactual closed-loop score.',
-            'calibration_approved': False, 'live_selector_changed': False, 'cycles': len(t),
+            'calibration_approved': False, 'executes_live_selector': False, 'cycles': len(t),
             'core_active_cycles': int(valid.sum()), 'core_exact_archived_match': True, 'cohorts_reproduced': True,
             'adapter_active_cycles': int(adapter_valid.sum()), 'adapter_status_counts': dict(reasons),
             'adapter_exact_match_with_fresh_engagement_dt': True,

@@ -2179,12 +2179,12 @@
       "description": "",
       "items": [
         {
-          "key": "FordVirtualAngleController",
+          "key": "FordModelActionController",
           "widget": "toggle",
           "needs_onroad_cycle": true,
-          "title": "C2-Free Path Tracking (Experimental)",
-          "description": "Follow large turns from the model path while retaining planned-curvature centering on the F-150 Lightning with C2 off.",
-          "details": "Uses the existing controller's model-path geometry for large turns when the model and planned curvature agree. Smaller or opposing requests use planned curvature for centering. A bounded measured-turning correction requires fresh, valid steering-controller status and clears during driver override. During turn release, planned-curvature tracking can recover within bounded earlier-command headroom when measured turning falls below both recent and current requests and is no longer increasing. An opposing correction still unwinds only to zero. When turning exceeds both requests, a separate guard prevents model-driven growth of the offset and heading requests, including after driver input resets feedback. The guard preserves opposing centering terms. A reported steering-controller limit still prevents request-increasing correction. Default off and this version is not road-validated. When enabled, this controller is always selected on the Ford CAN FD F-150 Lightning regardless of steering-firmware identification; other vehicles retain their existing controller. Enable only for controlled testing. Takes priority over PSCM Coefficient Observer while enabled. Turning it off restores the previous controller selection. Changes apply after a real offroad-to-onroad cycle, not immediately or on disengagement alone.",
+          "title": "Selected-Action Path Tracking (Experimental)",
+          "description": "Follow the selected steering plan with nearby model-path centering on the Ford CAN FD F-150 Lightning.",
+          "details": "Uses nearby model-path offset and a heading request based directly on selected planned curvature. There is no accumulated measured-turning correction. Default off; physical tracking and turn-exit behavior are not road-validated. Enable only for controlled testing. On the Ford CAN FD F-150 Lightning this takes priority over PSCM Coefficient Observer; other vehicles retain their existing controller. Turning it off restores PSCM Coefficient Observer if selected, otherwise the original Ford path controller. Changes apply after a real offroad-to-onroad cycle, not immediately or on disengagement alone.",
           "enablement": [
             {
               "type": "offroad_only"
@@ -2197,14 +2197,14 @@
           "needs_onroad_cycle": true,
           "title": "PSCM Coefficient Observer (Experimental)",
           "description": "Track the Ford steering controller's internal polynomial states and use fast path terms only for the response that slow curvature cannot provide.",
-          "details": "This changes live steering behavior on Ford CAN FD vehicles. Use only for supervised testing and be ready to take over immediately. This strategy is bypassed when C2-Free Path Tracking is selected on a supported vehicle; its selection is retained when that experiment is turned off.",
+          "details": "This changes live steering behavior on Ford CAN FD vehicles. Use only for supervised testing and be ready to take over immediately. This strategy is bypassed when Selected-Action Path Tracking is selected on a supported vehicle; its selection is retained when that experiment is turned off.",
           "enablement": [
             {
               "type": "offroad_only"
             },
             {
               "type": "param",
-              "key": "FordVirtualAngleController",
+              "key": "FordModelActionController",
               "equals": false
             }
           ]

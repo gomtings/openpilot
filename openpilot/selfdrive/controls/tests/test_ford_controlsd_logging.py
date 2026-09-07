@@ -5,13 +5,11 @@ import logging
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
-from unittest.mock import Mock
 
-from openpilot.cereal import custom
 from openpilot.common.logging_extra import SwagFormatter, SwagLogger
+from openpilot.selfdrive.controls.lib.ford_model_action import FordModelActionController
 from openpilot.selfdrive.controls.lib.ford_path import FordPathController, FordPscmObserverPathController
-from openpilot.selfdrive.controls.lib.ford_virtual_angle import FordVirtualAngleController, PscmStatus
-from openpilot.selfdrive.controls.tests.test_ford_path_reference import circle
+from openpilot.selfdrive.controls.tests.test_ford_model_action import circle
 
 
 class TestFordControlsLogging(unittest.TestCase):
@@ -42,278 +40,20 @@ class TestFordControlsLogging(unittest.TestCase):
     return record['msg']
 
   def test_startup_logs_selected_controller_without_crashing(self):
-    for controller in (FordPathController(), FordPscmObserverPathController(), FordVirtualAngleController()):
+    for controller in (FordPathController(), FordPscmObserverPathController(), FordModelActionController()):
       with self.subTest(controller=type(controller).__name__):
         record = self.emit_controls_event('Ford path controller selected', SimpleNamespace(ford_path_controller=controller))
         self.assertEqual(record['controller'], type(controller).__name__)
 
-  def test_periodic_diagnostics_log_without_crashing(self):
-    controller = FordVirtualAngleController()
-    for active, valid, pressed in ((False, True, False), (True, True, False), (True, True, True), (True, False, False)):
-      controller.reset()
-      controller.update(circle(.01), .01, yaw_rate=.05, speed=10.0, now=1.0,
-                        measurement_time=1.0, model_time=1.0, reference_time=1.0, active=active,
-                        valid=valid, steering_pressed=pressed)
-      controls = SimpleNamespace(ford_path_controller=controller, desired_curvature=.01, curvature=.005,
+  def test_candidate_diagnostics_identify_the_experiment_and_do_not_claim_calibration(self):
+    controller = FordModelActionController()
+    for active, valid in ((False, True), (True, True), (True, False)):
+      controller.update(circle(.01), .005, yaw_rate=.05, speed=20., now=1.,
+                        measurement_time=1., model_time=1., reference_time=1., active=active, valid=valid)
+      controls = SimpleNamespace(ford_path_controller=controller, desired_curvature=.005, curvature=.0025,
                                  sm=SimpleNamespace(logMonoTime={'modelV2': 123456789, 'carState': 123450000}))
       record = self.emit_controls_event('Ford C2-free path tracking', controls)
-      self.assertEqual(record['model_mono_time'], 123456789)
-      self.assertEqual(record['measurement_mono_time'], 123450000)
-      self.assertEqual(record['reference_service'], 'modelV2')
-      self.assertEqual(record['reference_mono_time'], 123456789)
+      self.assertEqual(record['hypothesis'], 'model-action-c0-c1-v1')
+      self.assertIs(record['calibration_approved'], False)
+      self.assertEqual(record['command'][2:], [0., 0.])
       self.assertEqual(record['status'], controller.diagnostics['status'])
-      self.assertEqual(record['hypothesis'], 'model-pose-c0-c1-feedback-v8')
-      self.assertEqual(record['command'], list(controller.diagnostics['command']))
-      self.assertIs(record['feedback_backoff_active'], False)
-      self.assertIs(record['feedback_recovery_active'], False)
-      self.assertIs(record['feedback_release_tracking_active'], False)
-      self.assertIsNone(record['feedback_release_ceiling'])
-      self.assertIsNone(record['feedback_curvature_delta'])
-      if active and valid:
-        self.assertIs(record['release_guard_active'], False)
-        self.assertEqual(record['response_delay'], 0.2)
-        self.assertEqual(record['desired_curvature'], 0.01)
-        self.assertEqual(record['measured_curvature'], 0.005)
-        self.assertEqual(record['base_guard'], 'blended')
-        self.assertGreater(record['model_share'], 0.)
-        self.assertLess(record['model_share'], 1.)
-        self.assertEqual(record['heading_target'], record['heading_base'])  # missing PSCM status leaves the base intact
-        self.assertTrue(all(key in record for key in ('offset_target', 'heading_target', 'model_heading_target', 'model_heading_horizon',
-                                                    'model_age', 'reference_age', 'reference_filter_time', 'model_offset_base', 'model_heading_base',
-                                                    'curvature_offset_base', 'curvature_heading_base', 'model_share', 'base_guard',
-                                                    'offset_target_unguarded', 'heading_target_unguarded',
-                                                    'release_guard_reference_curvature', 'feedback_release_ceiling',
-                                                    'feedback_curvature_delta')))
-
-  def test_periodic_diagnostics_distinguish_model_curvature_and_blended_bases(self):
-    for desired, geometry, guard, share in ((.02, .02, 'model_pose', 1.), (.002, .002, 'curvature_only', 0.),
-                                           (.01, .01, 'blended', 2 / 3), (-.02, .02, 'opposed_model', 0.),
-                                           (.002, 0., 'opposed_model', 0.), (0., .02, 'zero_request', 0.)):
-      with self.subTest(desired=desired, geometry=geometry):
-        controller = FordVirtualAngleController()
-        controller.update(circle(geometry), desired, yaw_rate=0., speed=10., now=1., measurement_time=1.,
-                          model_time=1., reference_time=1., active=True)
-        controls = SimpleNamespace(ford_path_controller=controller, desired_curvature=desired, curvature=0.,
-                                   sm=SimpleNamespace(logMonoTime={'modelV2': 1_000_000_000, 'carState': 1_000_000_000}))
-        record = self.emit_controls_event('Ford C2-free path tracking', controls)
-        self.assertEqual(record['base_guard'], guard)
-        self.assertAlmostEqual(record['model_share'], share)
-        for key in ('model_offset_base', 'model_heading_base', 'curvature_offset_base', 'curvature_heading_base'):
-          self.assertEqual(record[key], controller.diagnostics[key])
-        self.assertAlmostEqual(record['offset_target'], record['model_offset_base'] + record['curvature_offset_base'])
-        self.assertAlmostEqual(record['heading_base'], record['model_heading_base'] + record['curvature_heading_base'])
-        self.assertEqual(record['feedback_status'], 'missing_pscm')
-        self.assertEqual(record['heading_bias'], 0.)
-        self.assertEqual(record['command'][2:], [0., 0.])
-        if share == 0.:
-          self.assertEqual((record['model_offset_base'], record['model_heading_base']), (0., 0.))
-        if share == 1.:
-          self.assertEqual((record['curvature_offset_base'], record['curvature_heading_base']), (0., 0.))
-
-  def test_periodic_diagnostics_log_backoff_between_measurements(self):
-    controller = FordVirtualAngleController()
-    for i in range(50):
-      now = 1. + i * .01
-      controller.update(circle(.02), .02, yaw_rate=.2, speed=10., now=now, measurement_time=now,
-                        model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
-    cases = ((1.5, .02, 1.5, 'pscm_backoff', True), (1.51, .02, 1.5, 'no_new_measurement', True),
-             (1.52, .05, 1.52, 'pscm_limit', False))
-    for now, desired, measurement, expected_status, backoff in cases:
-      controller.update(circle(.03), desired, yaw_rate=.5, speed=10., now=now, measurement_time=measurement,
-                        model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 2, 2, False))
-      controls = SimpleNamespace(ford_path_controller=controller, desired_curvature=desired, curvature=.05,
-                                 sm=SimpleNamespace(logMonoTime={'modelV2': int(now * 1e9), 'carState': int(measurement * 1e9)}))
-      record = self.emit_controls_event('Ford C2-free path tracking', controls)
-      self.assertEqual(record['feedback_status'], expected_status)
-      self.assertIs(record['feedback_backoff_active'], backoff)
-      self.assertEqual(record['heading_bias'], controller.diagnostics['heading_bias'])
-      if backoff:
-        # The output ceiling is observable separately from the stored integral.
-        self.assertLess(record['heading_target'], record['heading_base'] + record['heading_bias'])
-
-  def test_periodic_diagnostics_log_recovery_only_on_accepted_fresh_updates(self):
-    for limit in (0, 2):
-      with self.subTest(pscm_limit=limit):
-        controller = FordVirtualAngleController()
-        for i in range(50):
-          now = 1. + i * .01
-          controller.update(circle(.02), .02, yaw_rate=.3, speed=10., now=now, measurement_time=now,
-                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
-        self.assertLess(controller.diagnostics['heading_bias'], 0.)
-        first_status = 'release_recovery' if limit == 0 else 'release'
-        for now, expected_status in ((1.5, first_status), (1.51, 'no_new_measurement')):
-          controller.update(circle(.02), .01, yaw_rate=.03, speed=10., now=now, measurement_time=1.5,
-                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, limit, 2, False))
-          controls = SimpleNamespace(ford_path_controller=controller, desired_curvature=.01, curvature=.003,
-                                     sm=SimpleNamespace(logMonoTime={'modelV2': int(now * 1e9), 'carState': 1_500_000_000}))
-          record = self.emit_controls_event('Ford C2-free path tracking', controls)
-          self.assertEqual(record['feedback_status'], expected_status)
-          self.assertIs(record['feedback_recovery_active'], limit == 0 and now == 1.5)
-          self.assertIs(record['feedback_backoff_active'], False)
-          self.assertEqual(record['heading_bias'], controller.diagnostics['heading_bias'])
-
-  def test_periodic_diagnostics_expose_release_guard_during_feedback_history_reset(self):
-    for sign in (-1, 1):
-      with self.subTest(sign=sign):
-        controller = FordVirtualAngleController()
-        for i in range(60):
-          now = 1. + i * .01
-          controller.update(circle(sign * .02), sign * .02, yaw_rate=sign * .2, speed=10., now=now, measurement_time=now,
-                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
-        for now, pressed, measurement, expected in ((1.6, True, 1.6, 'driver_override'),
-                                                  (1.61, False, 1.61, 'history'), (1.62, False, 1.61, 'no_new_measurement')):
-          controller.update(circle(sign * .03), sign * .018, yaw_rate=sign * .4, speed=10., now=now, measurement_time=measurement,
-                            model_time=now, reference_time=now, active=True, steering_pressed=pressed,
-                            pscm_status=PscmStatus(now, 2, 0, 2, False))
-          controls = SimpleNamespace(ford_path_controller=controller, curvature=sign * .04,
-                                     sm=SimpleNamespace(logMonoTime={'modelV2': int(now * 1e9), 'carState': int(measurement * 1e9)}))
-          record = self.emit_controls_event('Ford C2-free path tracking', controls)
-          self.assertEqual(record['feedback_status'], expected)
-          self.assertIs(record['release_guard_active'], not pressed)
-          self.assertAlmostEqual(record['release_guard_reference_curvature'], sign * .02)
-          self.assertEqual(record['heading_bias'], 0.)
-          for field in ('offset_target', 'heading_target'):
-            self.assertEqual(record[field + '_unguarded'], controller.diagnostics[field + '_unguarded'])
-            if pressed:
-              self.assertEqual(record[field], record[field + '_unguarded'])
-            else:
-              self.assertLess(sign * record[field], sign * record[field + '_unguarded'])
-
-  def test_periodic_diagnostics_expose_accepted_release_tracking_and_its_ceiling(self):
-    for sign in (-1, 1):
-      with self.subTest(sign=sign):
-        controller = FordVirtualAngleController()
-        for i in range(60):
-          now = 1. + i * .01
-          controller.update(circle(sign * .04), sign * .04, yaw_rate=sign * .4, speed=10., now=now, measurement_time=now,
-                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
-        for now in (1.6, 1.61):
-          controller.update(circle(sign * .02), sign * .03, yaw_rate=sign * .2, speed=10., now=now, measurement_time=1.6,
-                            model_time=now, reference_time=now, active=True, pscm_status=PscmStatus(now, 2, 0, 2, False))
-          controls = SimpleNamespace(ford_path_controller=controller, curvature=sign * .02,
-                                     sm=SimpleNamespace(logMonoTime={'modelV2': int(now * 1e9), 'carState': 1_600_000_000}))
-          record = self.emit_controls_event('Ford C2-free path tracking', controls)
-          fresh = now == 1.6
-          self.assertEqual(record['feedback_status'], 'release_tracking' if fresh else 'no_new_measurement')
-          self.assertIs(record['feedback_release_tracking_active'], fresh)
-          self.assertIs(record['feedback_recovery_active'], False)
-          self.assertIs(record['release_guard_active'], False)
-          if fresh:
-            self.assertLess(sign * record['feedback_curvature_delta'], 0.)
-            self.assertGreater(sign * record['heading_target'], sign * record['heading_base'])
-            self.assertLessEqual(sign * record['heading_target'], record['feedback_release_ceiling'])
-          else:
-            self.assertIsNone(record['feedback_release_ceiling'])
-            self.assertIsNone(record['feedback_curvature_delta'])
-
-  def test_actual_ford_branch_uses_selected_reference_and_disables_invalid_output(self):
-    source_path = Path(__file__).resolve().parents[1] / 'controlsd.py'
-    source = ast.parse(source_path.read_text())
-    controls_class = next(n for n in source.body if isinstance(n, ast.ClassDef) and n.name == 'Controls')
-    state_control = next(n for n in controls_class.body if isinstance(n, ast.FunctionDef) and n.name == 'state_control')
-    branch = next(n for n in state_control.body if isinstance(n, ast.If) and ast.unparse(n.test) == "self.CP.brand == 'ford'")
-    code = compile(ast.Module(body=[branch], type_ignores=[]), str(source_path), 'exec')
-
-    class Subscriptions:
-      frame = 1  # periodic logging is covered separately
-      valid = {'lateralManeuverPlan': False, 'modelV2': True, 'carStateSP': True}
-      logMonoTime = {'carState': 995_000_000, 'modelV2': 980_000_000, 'lateralManeuverPlan': 990_000_000, 'carStateSP': 998_000_000}
-      failed_checks = set()
-
-      def __init__(self):
-        self.state_sp = custom.CarStateSP.new_message()
-        self.state_sp.fordPscmStatus = {'valid': True, 'canMonoTime': 970_000_000, 'lateralState': 2,
-                                      'limit': 1, 'capability': 2, 'denied': False}
-
-      def __getitem__(self, service):
-        if service == 'carStateSP':
-          return self.state_sp
-        raise KeyError(service)
-
-      def all_checks(self, services):
-        return all(self.valid.get(service, True) and service not in self.failed_checks for service in services)
-
-    for maneuver in (False, True):
-      sm = Subscriptions()
-      sm.valid = dict(sm.valid, lateralManeuverPlan=maneuver)
-      controller = FordVirtualAngleController()
-      controller.update = Mock(wraps=controller.update)
-      controls = SimpleNamespace(CP=SimpleNamespace(brand='ford'), sm=sm, ford_virtual_angle=True, ford_path_controller=controller,
-                                 desired_curvature=0.007, curvature=0.002, steer_limited_by_safety=True)
-      cs = SimpleNamespace(vEgo=8.0, yawRate=-.015, canValid=True, steeringPressed=False, steeringTorque=.75)
-      cc = SimpleNamespace(latActive=True)
-      actuator = SimpleNamespace(curvature=0.007)
-      environment = {'self': controls, 'CS': cs, 'CC': cc, 'actuators': actuator, 'model_v2': circle(.007),
-                     'time': SimpleNamespace(monotonic=lambda: 1.0), 'PscmStatus': PscmStatus}
-      exec(code, environment)
-      self.assertTrue(controls.ford_path.valid)
-      self.assertTrue(cc.latActive)
-      self.assertIs(controller.update.call_args.args[0], environment['model_v2'])
-      self.assertEqual(controller.update.call_args.args[1], controls.desired_curvature)
-      args = controller.update.call_args.kwargs
-      self.assertEqual(args['yaw_rate'], .015)
-      self.assertEqual(args['steering_torque'], .75)
-      status = args['pscm_status']
-      self.assertAlmostEqual(status.timestamp, .97)
-      self.assertEqual((status.lateral_state, status.limit, status.capability, status.denied, status.valid), (2, 1, 2, False, True))
-      self.assertAlmostEqual(args['measurement_time'], 0.995)
-      self.assertAlmostEqual(args['model_time'], 0.98)
-      reference_service = 'lateralManeuverPlan' if maneuver else 'modelV2'
-      self.assertAlmostEqual(args['reference_time'], sm.logMonoTime[reference_service] * 1e-9)
-      self.assertEqual(actuator.curvature, 0.0)
-
-      # C0 needs the selected action service; C1 independently needs modelV2.
-      # Reject stale/failed selected services rather than silently fall back or
-      # transmit an active zero path. A non-selected maneuver service is ignored.
-      for stale_service in {reference_service, 'modelV2'}:
-        with self.subTest(maneuver=maneuver, stale_service=stale_service):
-          controller.reset()
-          cc.latActive = True
-          sm.logMonoTime = dict(Subscriptions.logMonoTime, **{stale_service: 500_000_000})
-          exec(code, environment)
-          self.assertFalse(controls.ford_path.valid)
-          self.assertFalse(cc.latActive)
-          self.assertIsNone(controller.reference.path)
-
-      for failed_service in {reference_service, 'modelV2', 'carState', 'vehicleParameters'}:
-        with self.subTest(maneuver=maneuver, failed_service=failed_service):
-          controller.reset()
-          cc.latActive = True
-          sm.logMonoTime = Subscriptions.logMonoTime.copy()
-          sm.failed_checks = {failed_service}
-          exec(code, environment)
-          self.assertFalse(controller.update.call_args.kwargs['valid'])
-          self.assertFalse(controls.ford_path.valid)
-          self.assertFalse(cc.latActive)
-          self.assertIsNone(controller.reference.path)
-
-      if not maneuver:
-        controller.reset()
-        cc.latActive = True
-        sm.logMonoTime = dict(Subscriptions.logMonoTime, lateralManeuverPlan=500_000_000)
-        sm.failed_checks = {'lateralManeuverPlan'}
-        exec(code, environment)
-        self.assertTrue(controls.ford_path.valid)
-        self.assertTrue(cc.latActive)
-
-      # A missing, stale or invalid optional PSCM status must not disable the
-      # existing feedforward request. Feedback receives its own validity/age.
-      for fault in ('service', 'missing', 'stale_can'):
-        with self.subTest(maneuver=maneuver, pscm_fault=fault):
-          controller.reset()
-          cc.latActive = True
-          sm.logMonoTime = Subscriptions.logMonoTime.copy()
-          sm.failed_checks = {'carStateSP'} if fault == 'service' else set()
-          sm.state_sp.fordPscmStatus.valid = fault != 'missing'
-          sm.state_sp.fordPscmStatus.canMonoTime = 500_000_000 if fault == 'stale_can' else 970_000_000
-          exec(code, environment)
-          status = controller.update.call_args.kwargs['pscm_status']
-          self.assertEqual(status.valid, fault == 'stale_can')
-          self.assertAlmostEqual(status.timestamp, .5 if fault == 'stale_can' else .97)
-          self.assertTrue(controller.update.call_args.kwargs['valid'])
-          self.assertTrue(controls.ford_path.valid)
-          self.assertTrue(cc.latActive)
-
-
-if __name__ == '__main__':
-  unittest.main()

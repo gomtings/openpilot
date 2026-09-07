@@ -1,5 +1,12 @@
 # Offline Ford selected-action candidate
 
+This document and `ford_model_action_validation.json` record the offline
+stage committed as `7ca3c6e3b`. The candidate is now available behind a
+separate default-off Sunnylink toggle; see
+[drive-test setup and validation](ford_model_action_drive_test.md).
+The counts, source hashes and selector status below describe that earlier
+stage, not the subsequent wiring change.
+
 The decision is `C0 = current model y(7 m)`,
 `C1 = max(7 m, speed × 1 s) × selected upstream-limited desiredCurvature`,
 with C2=C3=0. The 7 m station and one-second scale are engineering choices,
@@ -7,10 +14,10 @@ not identified PSCM gains. `calibration_approved=false`.
 
 `openpilot/selfdrive/controls/lib/ford_model_action.py` contains the core
 and a separate adapter compatible with the existing controlsd call.
-The production selector, v8 implementation, settings, opendbc submodule and
-Panda safety remain unchanged. Tests inject the adapter offline; it cannot
-be selected by a production setting. No hardware or CAN transmission occurs
-in the lab tools.
+At that stage, the production selector, v8 implementation, settings, opendbc
+submodule and Panda safety remained unchanged. Tests injected the adapter
+offline; there was no production setting. No hardware or CAN transmission
+occurs in the lab tools.
 
 ## Construction and integration
 
@@ -139,6 +146,8 @@ $PY -m tools.ford_pscm_lab.model_action_replay "$EVIDENCE/route90" --output .cac
 $PY -m tools.ford_pscm_lab.stress_model_action --cycles 200000 --seed 20260907 --output .cache/ford_model_action/stress.json
 ```
 
-The lab CLIs refuse an opendbc revision other than
-`72a775d35e54c21ff5c5798acef22016eedcc0a7`. This pin reproduces logged
-construction; it is not a request to change the merge's submodule pointer.
+The route replay refuses an opendbc revision other than
+`72a775d35e54c21ff5c5798acef22016eedcc0a7`. Stress defaults to this pin and
+also accepts an explicitly required commit with `--opendbc-revision` for
+deployment checks. A mismatch still fails. This historical pin reproduces
+logged construction; it does not change the merge's submodule pointer.

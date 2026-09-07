@@ -15,8 +15,8 @@ from opendbc.car.car_helpers import interfaces
 from opendbc.car.ford.values import FordFlags
 from opendbc.car.vehicle_model import VehicleModel
 from openpilot.selfdrive.controls.lib.drive_helpers import clip_curvature
+from openpilot.selfdrive.controls.lib.ford_model_action import FordModelActionController, select_model_action_controller
 from openpilot.selfdrive.controls.lib.ford_path import FordPath, FordPathController, FordPscmObserverPathController
-from openpilot.selfdrive.controls.lib.ford_virtual_angle import FordVirtualAngleController, PscmStatus, select_virtual_angle_controller
 from openpilot.selfdrive.controls.lib.latcontrol import LatControl
 from openpilot.selfdrive.controls.lib.latcontrol_pid import LatControlPID
 from openpilot.selfdrive.controls.lib.latcontrol_angle import LatControlAngle, STEER_ANGLE_SATURATION_THRESHOLD
@@ -59,9 +59,9 @@ class Controls(ControlsExt):
     self.ford_pscm_observer = (self.CP.brand == "ford" and self.CP.flags & FordFlags.CANFD and
                                self.params.get_bool("FordPscmObserver"))
     self.ford_path_controller = FordPscmObserverPathController() if self.ford_pscm_observer else FordPathController()
-    self.ford_path_controller = select_virtual_angle_controller(self.CP, self.params.get_bool("FordVirtualAngleController"),
-                                                               self.ford_path_controller)
-    self.ford_virtual_angle = isinstance(self.ford_path_controller, FordVirtualAngleController)
+    self.ford_path_controller = select_model_action_controller(self.CP, self.params.get_bool("FordModelActionController"),
+                                                              self.ford_path_controller)
+    self.ford_model_action = isinstance(self.ford_path_controller, FordModelActionController)
     if self.CP.brand == "ford":
       cloudlog.event("Ford path controller selected", controller=type(self.ford_path_controller).__name__)
     self.ford_path = FordPath()
@@ -170,19 +170,14 @@ class Controls(ControlsExt):
       actuators.steeringAngleDeg = float(lateral_output)
     if self.CP.brand == "ford":
       ford_model = model_v2 if self.sm.valid['modelV2'] else None
-      if self.ford_virtual_angle:
+      if self.ford_model_action:
         reference_service = 'lateralManeuverPlan' if self.sm.valid['lateralManeuverPlan'] else 'modelV2'
-        pscm = self.sm['carStateSP'].fordPscmStatus
-        pscm_status = PscmStatus(timestamp=pscm.canMonoTime * 1e-9, lateral_state=pscm.lateralState,
-                                 limit=pscm.limit, capability=pscm.capability, denied=pscm.denied,
-                                 valid=pscm.valid and self.sm.all_checks(['carStateSP']))
         self.ford_path = self.ford_path_controller.update(
           ford_model, self.desired_curvature, yaw_rate=-CS.yawRate, speed=CS.vEgo, now=time.monotonic(),
           measurement_time=self.sm.logMonoTime['carState'] * 1e-9,
           model_time=self.sm.logMonoTime['modelV2'] * 1e-9,
           reference_time=self.sm.logMonoTime[reference_service] * 1e-9,
           active=CC.latActive, valid=CS.canValid and self.sm.all_checks(['carState', 'vehicleParameters', 'modelV2', reference_service]),
-          steering_pressed=CS.steeringPressed, steering_torque=CS.steeringTorque, pscm_status=pscm_status,
         )
         if not self.ford_path.valid:
           CC.latActive = False

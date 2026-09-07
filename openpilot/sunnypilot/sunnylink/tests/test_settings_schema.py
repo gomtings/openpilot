@@ -279,29 +279,24 @@ class TestKnownPanels(OpenpilotTestCase):
 
 
 class TestKnownVehicleSettings(OpenpilotTestCase):
-  def test_ford_virtual_angle_replaces_shared_path_and_is_cycle_only(self, schema):
+  def test_ford_model_action_is_separate_default_off_cycle_only_toggle(self, schema):
     items = _brand_items(schema["vehicle_settings"].get("ford"))
-    assert "FordSharedPathController" not in {item["key"] for item in items}
-    servo = next(item for item in items if item["key"] == "FordVirtualAngleController")
-    assert servo["title"] == "C2-Free Path Tracking (Experimental)"
-    assert servo["widget"] == "toggle"
-    assert servo["needs_onroad_cycle"] is True
-    # No other toggle can prevent disabling this experiment while offroad.
-    assert servo["enablement"] == [{"type": "offroad_only"}]
-    assert "F-150 Lightning" in servo["description"]
-    assert "model path" in servo["description"]
-    assert "planned-curvature centering" in servo["description"]
-    assert "always selected on the Ford CAN FD F-150 Lightning regardless of steering-firmware identification" in servo["details"]
-    assert "Turning it off restores the previous controller selection" in servo["details"]
-    assert "RL38-14D003-AA" not in servo["details"]
-    assert "not road-validated" in servo["details"]
-    assert "offroad" in servo["details"] and "onroad" in servo["details"]
-
-  def test_ford_virtual_angle_defaults_off(self):
+    candidate = next(item for item in items if item["key"] == "FordModelActionController")
+    assert candidate["title"] == "Selected-Action Path Tracking (Experimental)"
+    assert candidate["widget"] == "toggle"
+    assert candidate["needs_onroad_cycle"] is True
+    assert candidate["enablement"] == [{"type": "offroad_only"}]
+    assert "takes priority over PSCM Coefficient Observer" in candidate["details"]
+    assert "Turning it off restores PSCM Coefficient Observer if selected" in candidate["details"]
+    assert "not road-validated" in candidate["details"]
     with tempfile.TemporaryDirectory() as path:
-      params = Params(path)
-      assert params.get_default_value("FordVirtualAngleController") is False
-      assert b"FordSharedPathController" not in params.all_keys()
+      assert Params(path).get_default_value("FordModelActionController") is False
+
+  def test_retired_ford_toggles_are_not_exposed(self, schema):
+    items = _brand_items(schema["vehicle_settings"].get("ford"))
+    keys = {item["key"] for item in items}
+    assert "FordVirtualAngleController" not in keys
+    assert "FordSharedPathController" not in keys
 
   def test_ford_has_pscm_observer(self, schema):
     items = _brand_items(schema["vehicle_settings"].get("ford"))
@@ -309,7 +304,7 @@ class TestKnownVehicleSettings(OpenpilotTestCase):
     assert observer["needs_onroad_cycle"] is True
     assert observer["enablement"] == [
       {"type": "offroad_only"},
-      {"type": "param", "key": "FordVirtualAngleController", "equals": False},
+      {"type": "param", "key": "FordModelActionController", "equals": False},
     ]
 
   def test_hyundai_has_longitudinal_tuning(self, schema):

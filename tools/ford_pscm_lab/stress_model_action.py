@@ -18,7 +18,7 @@ from openpilot.cereal import custom
 from openpilot.selfdrive.controls.lib import ford_model_action
 from openpilot.selfdrive.controls.lib.ford_model_action import ModelActionController
 from opendbc.car.ford.fordcan import create_lat_ctl2_msg
-from tools.ford_pscm_lab.model_action_replay import WireCheck, verify_dependency, revision
+from tools.ford_pscm_lab.model_action_replay import PINNED_OPENDBC, WireCheck, verify_dependency, revision
 
 
 def line(offset, heading=0.):
@@ -41,8 +41,8 @@ def check_raw_packing(wire, controller, path):
   assert abs(decoded['LatCtlPath_An_Actl']+path.path_angle) < 1e-9
 
 
-def run(cycles, seed, output):
-  dependency = verify_dependency()
+def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
+  dependency = verify_dependency(opendbc_revision)
   if cycles < 1:
     raise ValueError('cycles must be positive')
   rng = np.random.default_rng(seed)
@@ -120,5 +120,7 @@ if __name__ == '__main__':
   parser.add_argument('--cycles', type=int, default=200_000)
   parser.add_argument('--seed', type=int, default=20260907)
   parser.add_argument('--output', type=Path, required=True)
+  parser.add_argument('--opendbc-revision', default=PINNED_OPENDBC,
+                      help='Exact required dependency commit; defaults to the historical replay pin.')
   args = parser.parse_args()
-  run(args.cycles, args.seed, args.output)
+  run(args.cycles, args.seed, args.output, args.opendbc_revision)

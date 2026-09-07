@@ -1,19 +1,26 @@
-"""Offline Ford C2-free candidate: nearby model offset and selected-action heading.
+"""Experimental Ford C2-free controller: nearby offset and selected-action heading.
 
-The selector still uses v8. The 7 m station and one-second heading scale are
+Selected only by its explicit toggle. The 7 m station and one-second scale are
 engineering choices, not identified PSCM gains or physical calibration.
 """
 import math
+import struct
 
 import numpy as np
 
+from opendbc.car.ford.values import FordFlags
 from openpilot.selfdrive.controls.lib.ford_path import FordPath, _model_path
-from openpilot.selfdrive.controls.lib.ford_virtual_angle import _packed
 
 
 OFFSET_STATION_M = 7.0
 HEADING_TIME_S = 1.0
 CALIBRATION_APPROVED = False
+
+
+def _packed(value, resolution, offset):
+  """Mirror Float32 carControlSP and sign-reversed CANPacker rounding."""
+  value = struct.unpack("f", struct.pack("f", value))[0]
+  return -(math.floor((-value - offset) / resolution + 0.5) * resolution + offset)
 
 
 def _finite(*values):
@@ -73,17 +80,16 @@ class ModelActionController:
 
 
 class FordModelActionController:
-  """Offline adapter compatible with the existing controlsd update call.
+  """Input adapter for the opt-in selected-action controller.
 
   controlsd owns upstream selection/limiting and service health. This adapter
   checks ages and clock order, then supplies elapsed time to the two-state
   core. Its timestamps and diagnostics never affect the targets. Raw model
   geometry is checked on every cycle, even at a repeated model timestamp.
 
-  Yaw is checked only for the inherited finite/range input gate. Driver and
-  PSCM arguments are accepted for call-site compatibility; they do not modify
-  this base request. Engagement and downstream driver arbitration still apply,
-  as for v8's base. Missing PSCM feedback cannot disable a valid base request.
+  Yaw is checked only for the inherited finite/range input gate. Engagement
+  and downstream driver arbitration still apply. This controller does not use
+  PSCM status or driver torque as control-law inputs.
   """
   def __init__(self):
     self.core = ModelActionController()
@@ -92,11 +98,11 @@ class FordModelActionController:
   def reset(self, status='inactive'):
     self.core.reset()
     self.last_time = self.last_measurement_time = self.last_model_time = None
-    self.diagnostics = {'status': status, 'hypothesis': 'model-action-c0-c1-offline',
+    self.diagnostics = {'status': status, 'hypothesis': 'model-action-c0-c1-v1',
                         'calibration_approved': CALIBRATION_APPROVED, 'command': (0., 0., 0., 0.)}
 
   def update(self, model, desired_curvature, *, yaw_rate, speed, now, measurement_time, model_time, reference_time,
-             active, valid=True, steering_pressed=False, steering_torque=0., pscm_status=None):
+             active, valid=True):
     reason = None
     if not active:
       reason = 'inactive'
@@ -123,9 +129,17 @@ class FordModelActionController:
       self.reset('invalid_path')
       return command
     self.last_time, self.last_measurement_time, self.last_model_time = now, measurement_time, model_time
-    self.diagnostics = {'status': 'active', 'hypothesis': 'model-action-c0-c1-offline',
+    self.diagnostics = {'status': 'active', 'hypothesis': 'model-action-c0-c1-v1',
                         'calibration_approved': CALIBRATION_APPROVED, 'desired_curvature': desired_curvature,
                         'model_age': now - model_time, 'measurement_age': now - measurement_time, 'reference_age': now - reference_time,
                         'dt': dt, 'offset_request': self.core.c0, 'heading_request': self.core.c1,
                         'command': (command.path_offset, command.path_angle, 0., 0.)}
     return command
+
+
+def select_model_action_controller(CP, enabled, previous_controller):
+  """The separate default-off toggle takes priority on the CAN FD Lightning."""
+  compatible = CP.brand == 'ford' and CP.flags & FordFlags.CANFD and CP.carFingerprint == 'FORD_F_150_LIGHTNING_MK1'
+  if enabled and compatible:
+    return FordModelActionController()
+  return previous_controller
