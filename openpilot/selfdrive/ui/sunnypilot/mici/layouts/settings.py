@@ -4,6 +4,8 @@ Copyright (c) 2021-, Haibin Wen, sunnypilot, and a number of other contributors.
 This file is part of sunnypilot and is licensed under the MIT License.
 See the LICENSE.md file in the root directory for more details.
 """
+from collections.abc import Callable
+
 from openpilot.selfdrive.ui.mici.layouts.settings import settings as OP
 from openpilot.selfdrive.ui.mici.layouts.settings.settings import SettingsBigButton
 from openpilot.selfdrive.ui.mici.layouts.settings.device import DeviceLayoutMici
@@ -27,6 +29,17 @@ class SunnylinkBigButton(SettingsBigButton):
   def _get_label_font_size(self):
     # Audiowide runs wider than Inter: "sunnylink" wraps to two lines at 64
     return 56
+
+
+class AlwaysOffroadDisengageDialog(BigDialog):
+  def __init__(self, callback: Callable[[], None]):
+    super().__init__(tr("disengage to enable always offroad"), "")
+    self._disengaged_callback = callback
+
+  def _update_state(self):
+    super()._update_state()
+    if not ui_state.engaged and not self.is_dismissing:
+      self.dismiss(self._disengaged_callback)
 
 
 class SettingsLayoutSP(OP.SettingsLayout):
@@ -94,7 +107,7 @@ class SettingsLayoutSP(OP.SettingsLayout):
                                   confirm_callback=lambda: _set_offroad_status(False))
     else:
       if ui_state.engaged:
-        gui_app.push_widget(BigDialog(tr("disengage to enable always offroad"), "", ))
+        gui_app.push_widget(AlwaysOffroadDisengageDialog(lambda: self._handle_always_offroad(True)))
         return
 
       dlg = BigConfirmationDialog(tr("slide to force offroad"), self.icon_offroad_slider, red=True,
