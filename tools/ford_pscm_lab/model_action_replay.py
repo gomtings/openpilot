@@ -28,9 +28,10 @@ from openpilot.selfdrive.controls.lib.ford_path import _model_path
 PINNED_OPENDBC = '72a775d35e54c21ff5c5798acef22016eedcc0a7'
 V1_REVISION = '5fc16abc7662020706e29f57d31a6d5e2bc1293a'
 V2_REVISION = '744a97d9bc08d8743b250eceff7c88585b5480de'
+V3_REVISION = '01f8d51c82b3e863f1012d383b5994813ef01b81'
 
 
-@lru_cache(maxsize=2)
+@lru_cache(maxsize=3)
 def load_controller(commit):
   """Load exact archived Python source for offline comparisons, never production."""
   if len(commit) != 40 or any(c not in '0123456789abcdef' for c in commit):

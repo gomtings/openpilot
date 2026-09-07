@@ -54,19 +54,24 @@ def test_two_actuator_positions_are_sufficient_for_every_next_output():
     assert controller.update(model, desired, **kwargs) == copied.update(model, desired, **kwargs)
 
 
-def test_held_turn_releases_without_a_bias_tail_or_sign_reversal():
+def test_held_turn_releases_with_geometric_countersteering_and_no_retained_bias():
   for sign in (-1., 1.):
     controller = ModelActionController()
     for _ in range(400):
       out = controller.update(circle(sign*.01), sign*.01, speed=20., dt=.01)
     assert out.path_angle == pytest.approx(sign*.2)
-    previous = np.array([out.path_offset, out.path_angle])
+    previous = np.array([controller.c0, controller.c1])
+    opposed = False
     for desired in sign*np.linspace(.01, 0., 101):
       out = controller.update(straight(), desired, speed=20., dt=.01)
-      values = np.array([out.path_offset, out.path_angle])
-      assert (abs(values) <= abs(previous)+1e-8).all()
-      assert (sign*values >= -1e-8).all()
+      rotation = desired*3.
+      predicted = (1.-math.cos(rotation))/desired-10.*math.sin(rotation) if desired else 0.
+      expected = previous+np.clip([predicted, 20.*desired]-previous, [-.04, -.005], [.04, .005])
+      values = np.array([controller.c0, controller.c1])
+      np.testing.assert_allclose(values, expected, atol=1e-10)
+      opposed |= sign*out.path_offset < 0.
       previous = values
+    assert opposed
     assert out == FordPath(True, 0., 0., 0., 0.)
 
 
@@ -180,8 +185,9 @@ def test_arc_station_not_forward_x_or_model_heading_determines_offset():
   x = np.array([0., 6., 12.])
   y = .4+x*.75
   target = encode_model_action(make_model(x, y, [2., -2., 1.]), -.01, 20.)
-  # Arc length is 1.25*x, so base y(7)=4.6. Prediction reaches its +.15m bound.
-  assert target.path_offset == pytest.approx(4.75)
+  # Arc length is 1.25*x. At station 10, x=8 and y=6.4; use the full predicted pose.
+  expected = math.cos(-.03)*6.4-math.sin(-.03)*8.+(1.-math.cos(-.03))/-.01
+  assert target.path_offset == pytest.approx(expected)
   assert target.path_angle == pytest.approx(-.2)
 
 

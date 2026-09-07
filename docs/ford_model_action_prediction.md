@@ -1,5 +1,9 @@
 # Experimental Ford path prediction, v3
 
+This document and its counts describe archived v3. The
+[current v4 experiment](ford_model_action_full_prediction.md) removes the extra
+15 cm / 25% prediction adjustment cap.
+
 The latest driven route9e used v1 (`5fc16abc7`), before the v2 yaw damping.
 It often follows the requested steering angle closely, but some tight turns
 fall behind after a reasonable initial turn-in. The requested angle is replanned
@@ -97,13 +101,15 @@ See `ford_model_action_prediction_validation.json` for provenance and counts.
 
 ## Reproduce and select
 
-Use the native dependencies and suite command in the
-[drive-test guide](ford_model_action_drive_test.md). New-route comparisons use
+To reproduce the archived suite and stress results, use v3 commit
+`01f8d51c82b3e863f1012d383b5994813ef01b81` with the native dependencies and
+suite command in the [drive-test guide](ford_model_action_drive_test.md).
+Current replay tooling can select the immutable v3 source explicitly. New-route comparisons use
 the deployment opendbc pin `c21a9013700734dd20b09e05aa68329ad8cc20f9`:
 
 ```sh
-python -m tools.ford_pscm_lab.damping_replay /path/to/route9e/rlogs --baseline v2 --candidate current --window left_entry 173 175.4 --window left_peak 175.4 178.3 --window left_exit 178.3 180.5 --window reversal 728 734 --window final_entry 822 825.5 --output /path/to/separate/route9e-results
-python -m tools.ford_pscm_lab.damping_replay /path/to/route9b/rlogs --baseline v2 --candidate current --window right_entry 637 640 --window right_exit_before_strong_input 642.7 643.852 --output /path/to/separate/route9b-results
+python -m tools.ford_pscm_lab.damping_replay /path/to/route9e/rlogs --baseline v2 --candidate v3 --window left_entry 173 175.4 --window left_peak 175.4 178.3 --window left_exit 178.3 180.5 --window reversal 728 734 --window final_entry 822 825.5 --output /path/to/separate/route9e-results
+python -m tools.ford_pscm_lab.damping_replay /path/to/route9b/rlogs --baseline v2 --candidate v3 --window right_entry 637 640 --window right_exit_before_strong_input 642.7 643.852 --output /path/to/separate/route9b-results
 python -m tools.ford_pscm_lab.stress_model_action --cycles 200000 --seed 20260907 --opendbc-revision c21a9013700734dd20b09e05aa68329ad8cc20f9 --output /path/to/stress.json
 ```
 

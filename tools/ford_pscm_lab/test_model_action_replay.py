@@ -45,13 +45,13 @@ def test_archived_loader_uses_exact_source_and_records_its_hash(monkeypatch):
   monkeypatch.setattr(replay.subprocess, 'check_output', read_source)
   replay.load_controller.cache_clear()
   try:
-    for commit in (replay.V1_REVISION, replay.V2_REVISION):
+    for commit in (replay.V1_REVISION, replay.V2_REVISION, replay.V3_REVISION):
       module = replay.load_controller(commit)
       assert module.archived_value == 42
       assert module.source_sha256 == hashlib.sha256(source).hexdigest()
       assert calls[-1][-2:] == ['show', f'{commit}:openpilot/selfdrive/controls/lib/ford_model_action.py']
       assert replay.load_controller(commit) is module
-    assert len(calls) == 2
+    assert len(calls) == 3
   finally:
     replay.load_controller.cache_clear()
 

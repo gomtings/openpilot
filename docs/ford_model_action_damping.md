@@ -1,7 +1,7 @@
 # Experimental Ford offset damping, v2
 
 This document and its validation counts describe the archived v2 source. The
-[current v3 experiment](ford_model_action_prediction.md) adds bounded path prediction.
+[current v4 experiment](ford_model_action_full_prediction.md) uses full path prediction.
 
 Segment 10 of the supplied route9b recording shows measured turning persisting
 as requested right curvature falls. At about 643.0 s, before strong driver

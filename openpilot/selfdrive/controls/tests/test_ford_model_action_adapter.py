@@ -81,7 +81,7 @@ def test_repeated_measurements_do_not_freeze_slew_or_cache_invalid_model_geometr
   controller = FordModelActionController()
   for i in range(10):
     result = update(controller, 1.+i*.01, measurement_time=1., model_time=1., reference_time=1.)
-  assert result.path_offset == pytest.approx(.3)  # Preview accounts for selected turning toward the offset path.
+  assert result.path_offset == pytest.approx(.14)  # Full preview accounts for selected turning toward the offset path.
   assert result.path_angle == pytest.approx(.05)
   broken = straight(.4)
   broken.position.y[5] = math.nan
@@ -115,7 +115,7 @@ def test_release_keeps_current_geometry_and_may_grow_c0_while_c1_decreases():
     assert abs(after.path_angle) < abs(before.path_angle)
     for i in range(100):
       released = update(controller, 3.+i*.01, model=circle(sign*.02), desired_curvature=0.)
-    assert released.path_offset == after.path_offset
+    assert abs(released.path_offset) > abs(after.path_offset)  # Less expected turning raises the future-frame offset.
     assert released.path_angle == pytest.approx(0.)
 
 
