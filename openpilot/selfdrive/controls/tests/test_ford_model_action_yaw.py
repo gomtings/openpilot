@@ -1,4 +1,4 @@
-"""Measured yaw gates input health but cannot attenuate path demand."""
+"""Raw Ford yaw gates input health but cannot change path demand."""
 import math
 
 import pytest

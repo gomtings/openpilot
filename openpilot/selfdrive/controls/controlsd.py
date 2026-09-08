@@ -171,12 +171,21 @@ class Controls(ControlsExt):
     if self.CP.brand == "ford":
       ford_model = model_v2 if self.sm.valid['modelV2'] else None
       if self.ford_model_action:
+        assert isinstance(self.ford_path_controller, FordModelActionController)
         reference_service = 'lateralManeuverPlan' if self.sm.valid['lateralManeuverPlan'] else 'modelV2'
+        now = time.monotonic()
+        motion = self.sm['deviceMotion']
+        pose_valid = (self.calibrated_pose is not None and self.pose_calibrator.calib_valid and
+                      self.sm.all_checks(['deviceMotion', 'extrinsicsCalibration']) and
+                      motion.angularVelocityDevice.valid and motion.sensorsOK and motion.inputsOK and
+                      -.005 <= now - self.sm.logMonoTime['extrinsicsCalibration'] * 1e-9 <= 1.)
         self.ford_path = self.ford_path_controller.update(
-          ford_model, self.desired_curvature, yaw_rate=-CS.yawRate, speed=CS.vEgo, now=time.monotonic(),
+          ford_model, self.desired_curvature, yaw_rate=-CS.yawRate, speed=CS.vEgo, now=now,
           measurement_time=self.sm.logMonoTime['carState'] * 1e-9,
           model_time=self.sm.logMonoTime['modelV2'] * 1e-9,
           reference_time=self.sm.logMonoTime[reference_service] * 1e-9,
+          pose_yaw_rate=self.calibrated_pose.angular_velocity.z if pose_valid else None,
+          pose_time=self.sm.logMonoTime['deviceMotion'] * 1e-9, pose_valid=pose_valid,
           active=CC.latActive, valid=CS.canValid and self.sm.all_checks(['carState', 'vehicleParameters', 'modelV2', reference_service]),
         )
         if not self.ford_path.valid:
@@ -188,6 +197,7 @@ class Controls(ControlsExt):
                          measured_curvature=self.curvature,
                          **self.ford_path_controller.diagnostics)
       elif self.ford_pscm_observer:
+        assert isinstance(self.ford_path_controller, FordPscmObserverPathController)
         self.ford_path = self.ford_path_controller.update(ford_model, self.desired_curvature,
                                                           current_curvature=self.curvature, v_ego=CS.vEgo,
                                                           v_ego_raw=CS.vEgoRaw, active=CC.latActive)

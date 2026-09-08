@@ -49,11 +49,16 @@ class TestFordControlsLogging(unittest.TestCase):
     controller = FordModelActionController()
     for active, valid in ((False, True), (True, True), (True, False)):
       controller.update(circle(.01), .005, yaw_rate=.05, speed=20., now=1.,
-                        measurement_time=1., model_time=1., reference_time=1., active=active, valid=valid)
+                        measurement_time=1., model_time=1., reference_time=1., active=active, valid=valid,
+                        pose_yaw_rate=.04, pose_time=.98, pose_valid=True)
       controls = SimpleNamespace(ford_path_controller=controller, desired_curvature=.005, curvature=.0025,
                                  sm=SimpleNamespace(logMonoTime={'modelV2': 123456789, 'carState': 123450000}))
       record = self.emit_controls_event('Ford C2-free path tracking', controls)
-      self.assertEqual(record['hypothesis'], 'model-action-c0-c1-prediction-v5')
+      self.assertEqual(record['hypothesis'], 'model-action-measured-pose-v6')
       self.assertIs(record['calibration_approved'], False)
       self.assertEqual(record['command'][2:], [0., 0.])
       self.assertEqual(record['status'], controller.diagnostics['status'])
+      if active and valid:
+        self.assertEqual(record['pose_source'], 'measured')
+        self.assertAlmostEqual(record['pose_yaw_rate'], .04)
+        self.assertAlmostEqual(record['pose_age'], .02)

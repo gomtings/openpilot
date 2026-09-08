@@ -27,7 +27,8 @@ def startup(cp=None, params=None):
   end = next(i for i, n in enumerate(body) if isinstance(n, ast.Assign) and ast.unparse(n.targets[0]) == 'self.ford_path')
   if params is None:
     params = SimpleNamespace(get_bool=lambda key: key == 'FordModelActionController')
-  controls = SimpleNamespace(CP=cp or car_params(), params=params)
+  controls = SimpleNamespace(CP=cp or car_params(), params=params, calibrated_pose=None,
+                             pose_calibrator=SimpleNamespace(calib_valid=False))
   environment = {'self': controls, 'FordFlags': FordFlags, 'FordPath': FordPath,
                  'FordPathController': FordPathController, 'FordPscmObserverPathController': FordPscmObserverPathController,
                  'FordModelActionController': FordModelActionController,
