@@ -145,8 +145,10 @@ class LongitudinalPlanner(LongitudinalPlannerSP):
 
     is_e2e = self.is_e2e(sm)
 
+    experimental_mode = sm['selfdriveState'].experimentalMode
+    dec_acc_policy = experimental_mode and self.dec.active() and self.dec.mode() == "acc"
     max_accel_override = self.get_max_accel_override(v_ego)
-    v_cruise = self.get_cruise_target_override(v_ego, v_cruise, force_decel)
+    v_cruise = self.get_cruise_target_override(v_ego, v_cruise, force_decel, experimental_mode, dec_acc_policy)
     a_cruise_prev = self.a_cruise
     gated_cruise = get_cruise_accel(is_e2e, v_cruise, v_ego, a_cruise_prev, steer_angle_without_offset,
                                     self.CP, self.dt, accel_coast, self.allow_throttle, max_accel_override)

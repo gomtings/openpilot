@@ -64,8 +64,11 @@ class LongitudinalPlannerSP:
 
     return self.accel_controller.get_max_accel(v_ego)
 
-  def get_cruise_target_override(self, v_ego: float, v_target: float, force_decel: bool) -> float:
-    if not self.accel_controller.is_enabled() or force_decel or self.source != LongitudinalPlanSource.cruise:
+  def get_cruise_target_override(self, v_ego: float, v_target: float, force_decel: bool,
+                                experimental_mode: bool = False, dec_acc_policy: bool = False) -> float:
+    # Experimental/model mode owns braking unless DEC explicitly selects its ACC policy.
+    if ((experimental_mode and not dec_acc_policy) or not self.accel_controller.is_enabled()
+        or force_decel or self.source != LongitudinalPlanSource.cruise):
       return v_target
 
     return self.accel_controller.get_cruise_target(v_ego, v_target)

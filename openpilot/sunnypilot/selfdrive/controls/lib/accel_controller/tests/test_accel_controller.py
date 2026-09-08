@@ -259,7 +259,20 @@ class TestPlannerIntegration(OpenpilotTestCase):
     planner.source = LongitudinalPlanSource.cruise
     assert planner.get_cruise_target_override(25.0, 0.0, force_decel=True) == 0.0
 
-  def test_e2e_candidate_is_held_through_a_brake_but_not_otherwise(self):
+  def test_cruise_target_override_follows_dec_policy(self):
+    self.params.put_bool("AccelPersonalityEnabled", True, block=True)
+    planner = _bare_planner()
+
+    # Experimental/model mode bypasses accel-personality braking unless DEC explicitly selects ACC policy.
+    assert planner.get_cruise_target_override(25.0, 22.5, force_decel=False, experimental_mode=True) == 22.5
+    shaped = planner.get_cruise_target_override(25.0, 22.5, force_decel=False,
+                                                experimental_mode=True, dec_acc_policy=True)
+    assert 22.5 < shaped < 25.0
+
+    # Normal mode retains the existing accel-personality behavior.
+    shaped = planner.get_cruise_target_override(25.0, 22.5, force_decel=False, experimental_mode=False)
+    assert 22.5 < shaped < 25.0
+
     # Route 000005dd: e2e -> lead1 stepped +2.25 m/s^2 in one frame (45 m/s^3) and back the next, while the
     # model held desiredAcceleration at -1.63 and never moved more than 0.024. Dropping a candidate the model
     # still owns is what produced the brake/gas/brake flip.
