@@ -16,13 +16,14 @@ from opendbc.can import CANParser
 from opendbc.car import Bus, structs
 from opendbc.car.ford.carcontroller import CarController
 from opendbc.car.ford.values import FordFlags
-from openpilot.cereal import custom
+from openpilot.cereal import custom, log
 from openpilot.selfdrive.car.helpers import convert_carControlSP
 from openpilot.selfdrive.controls.lib.drive_helpers import clip_curvature
 from openpilot.selfdrive.controls.lib.ford_model_action import FordModelActionController
 from openpilot.selfdrive.controls.lib.ford_path import FordPath
 from openpilot.selfdrive.controls.tests.test_ford_model_action import circle, straight
 from openpilot.selfdrive.controls.tests.test_ford_model_action_selection import startup
+from openpilot.selfdrive.locationd.helpers import Pose, PoseCalibrator
 
 
 def update(controller, now=1., **overrides):
@@ -154,7 +155,8 @@ class Subscriptions:
                        'deviceMotion': 980_000_000, 'extrinsicsCalibration': 750_000_000}
     self.failed = set()
     self.messages = {'carStateSP': custom.CarStateSP.new_message(), 'lateralManeuverPlan': SimpleNamespace(desiredCurvature=-.1),
-                     'deviceMotion': SimpleNamespace(angularVelocityDevice=SimpleNamespace(valid=True), sensorsOK=True, inputsOK=True)}
+                     'deviceMotion': SimpleNamespace(angularVelocityDevice=SimpleNamespace(valid=True), sensorsOK=True, inputsOK=True,
+                                                     timestamp=970_000_000)}
 
   def __getitem__(self, service):
     return self.messages[service]
@@ -242,7 +244,8 @@ def test_actual_controlsd_service_gates(pipeline, maneuver, failed):
 
 @pytest.mark.parametrize('fault', ['missing_pose', 'uncalibrated', 'motion_service', 'calibration_service', 'yaw_invalid',
                                  'sensors_invalid', 'inputs_invalid', 'stale_calibration', 'future_calibration',
-                                 'stale_motion', 'future_motion', 'nan_yaw', 'infinite_yaw', 'yaw_range'])
+                                 'stale_motion', 'future_motion', 'stale_estimate', 'future_estimate', 'missing_estimate',
+                                 'nan_yaw', 'infinite_yaw', 'yaw_range'])
 def test_actual_controlsd_unhealthy_pose_retains_requested_pose_and_engagement(pipeline, fault):
   sm = Subscriptions(False)
   controls = startup()
@@ -272,6 +275,12 @@ def test_actual_controlsd_unhealthy_pose_retains_requested_pose_and_engagement(p
     sm.logMonoTime['deviceMotion'] = 849_000_000
   elif fault == 'future_motion':
     sm.logMonoTime['deviceMotion'] = 1_006_000_000
+  elif fault == 'stale_estimate':
+    motion.timestamp = 849_000_000
+  elif fault == 'future_estimate':
+    motion.timestamp = 1_006_000_000
+  elif fault == 'missing_estimate':
+    motion.timestamp = 0
   elif fault == 'nan_yaw':
     controls.calibrated_pose.angular_velocity.z = math.nan
   elif fault == 'infinite_yaw':
@@ -316,3 +325,25 @@ def test_pose_fallback_and_recovery_preserve_slew_states():
     assert out.path_angle == pytest.approx(.2)
     assert controller.diagnostics['pose_source'] == ('measured' if healthy else 'requested')
   assert states == pytest.approx([.44, .4, .44])
+
+
+def test_calibration_only_update_refreshes_pose_before_ford_uses_it():
+  controls = startup()
+  controls.pose_calibrator = PoseCalibrator()
+  motion = log.DeviceMotion.new_message()
+  motion.angularVelocityDevice.x = .5
+  motion.angularVelocityDevice.z = .1
+  controls.calibrated_pose = controls.pose_calibrator.build_calibrated_pose(Pose.from_device_motion(motion))
+  sm = Subscriptions(False)
+  sm.updated = {'extrinsicsCalibration': True, 'deviceMotion': False}
+  sm.update = lambda timeout: None
+  sm.messages.update(deviceMotion=motion, extrinsicsCalibration=log.ExtrinsicsCalibration.new_message(
+    rpyCalib=[0., .2, 0.], calStatus='calibrated'))
+  controls.sm = sm
+  controls_file = Path(__file__).resolve().parents[3]/'selfdrive/controls/controlsd.py'
+  method = _method(controls_file, 'Controls', 'update')
+  environment = {'Pose': Pose}
+  exec(compile(ast.Module(body=[method], type_ignores=[]), str(controls_file), 'exec'), environment)
+  environment['update'](controls)
+  assert controls.pose_calibrator.calib_valid
+  assert controls.calibrated_pose.angular_velocity.z == pytest.approx(math.sin(.2)*.5+math.cos(.2)*.1)

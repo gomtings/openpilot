@@ -1,9 +1,12 @@
 # Ford selected-action drive-test branch
 
 The candidate is selectable on the **Ford CAN FD F-150 Lightning** behind
-its own persistent, default-off Sunnylink toggle. Version 5 retains full geometric
-path prediction and [removes yaw damping](ford_model_action_no_yaw_damping.md).
-Measured yaw is used only for input-health checks and diagnostics. Input gates are unchanged.
+its own persistent, default-off Sunnylink toggle. Version 6 uses calibrated
+measured turn rate for C0's existing 150 ms vehicle-pose forecast. C1 still uses
+selected, upstream-limited curvature. Raw Ford yaw remains an input-health and
+diagnostic signal; calibrated motion now affects C0. This is yaw feedback whose
+sensitivity depends on the existing preview time and path distance. There is no
+fitted PSCM plant model, added strength multiplier, new filter or extra core state.
 `calibration_approved=false`: offline checks do not establish physical tracking,
 turn-exit behavior or closed-loop stability.
 
@@ -20,7 +23,10 @@ turn-exit behavior or closed-loop stability.
 
 The startup log event `Ford path controller selected` should report
 `FordModelActionController`. Periodic `Ford C2-free path tracking` events
-identify `hypothesis=model-action-c0-c1-prediction-v5` and report host yaw and the command tuple.
+identify `hypothesis=model-action-measured-pose-v6`. Active events report
+`pose_source=measured` when fresh calibrated motion is used, otherwise
+`pose_source=requested`. They also include `pose_yaw_rate`, `pose_age`, raw host
+`yaw_rate`, selected curvature and the command tuple.
 
 Turning the new toggle off and completing another offroad-to-onroad cycle
 restores **PSCM Coefficient Observer** if selected, otherwise the original
@@ -41,6 +47,17 @@ existing Ford call path, selected upstream-limited curvature, service gates,
 invalid-output disengagement, Float32 publication and downstream CAN builder.
 C2 and C3 stay zero. No opendbc pointer or Panda safety change is included.
 
+Measured-pose use requires healthy `deviceMotion` and `extrinsicsCalibration`
+services, calibrated extrinsics no older than 1 s, valid angular velocity and
+sensor/input flags, and finite calibrated yaw within ±3 rad/s. Both the motion
+publication and its embedded filter-state timestamp must be no older than
+150 ms; all three age checks allow at most 5 ms future skew. Calibration-only
+updates rebuild the cached pose before the candidate uses it.
+Unavailable, unhealthy or stale optional motion falls back to the v5
+requested-curvature forecast without resetting C0/C1 slew. Existing base-input
+failures still invalidate the command. C1, the ±5.11 m / ±0.5 rad field caps,
+4 m/s / 0.5 rad/s slew rates, packing and two core states are unchanged.
+
 Sunnylink publishes the toggle through its generated settings schema and
 writes the registered Boolean through the existing parameter endpoint. The
 offroad UI rule and `needs_onroad_cycle` metadata describe when it can be
@@ -54,9 +71,22 @@ returns separate strings owned by the parameter handle. Regression tests
 check distinct registered keys across flags, and toggle tests check its
 persistence and backup registration using the rebuilt native library.
 
-The current validation record is `ford_model_action_no_yaw_damping_validation.json`;
-the [v5 notes](ford_model_action_no_yaw_damping.md) explain damping removal and its
-scope. `ford_model_action_full_prediction_validation.json` archives v4 checks;
+The current validation record is `ford_model_action_measured_pose_validation.json`.
+Its runtime replay exactly matches the reviewed offline candidate across
+340,757 recorded cycles and 681,514 Float32/CAN round trips. C1 and eligibility
+match v5 on all four extracts. The replay checks frozen recorded inputs; it does
+not simulate how the vehicle would respond to different commands.
+
+The candidate adds C0 during the recorded weak-bend turn-rate shortfalls and
+reduces it during the older overshoot example. Tight-turn C1 saturation remains.
+On the 70.24-second sustained quiet-path cohort, C0 amplitude RMS decreases but
+per-cycle change RMS rises about 28%; physical centering and tracking still need
+evaluation. All four routes came from the same truck, so cross-PSCM performance
+has not been demonstrated.
+
+`ford_model_action_no_yaw_damping_validation.json` archives v5 checks;
+the [v5 notes](ford_model_action_no_yaw_damping.md) explain the prior damping removal.
+`ford_model_action_full_prediction_validation.json` archives v4 checks;
 the [full-prediction notes](ford_model_action_full_prediction.md) explain cap removal
 and remaining physical uncertainty. `ford_model_action_prediction_validation.json`
 archives the capped v3 evaluation. `ford_model_action_damping_validation.json`
