@@ -14,8 +14,6 @@ from openpilot.selfdrive.controls.lib.ford_path import FordPath, _model_path
 
 OFFSET_STATION_M = 7.0
 HEADING_TIME_S = 1.0
-EXCESS_YAW_DEADBAND = .02  # rad/s; above the observed approximately .008 rad/s Ford yaw offset
-EXCESS_YAW_LOOKAHEAD_S = .2  # engineering choice, not an identified PSCM delay
 CALIBRATION_APPROVED = False
 PREDICTION_TIME_S = .15  # geometric preview, not an identified actuator delay
 
@@ -76,27 +74,11 @@ def encode_model_action(model, desired_curvature, speed):
   return FordPath(True, c0, c1, 0., 0.) if _finite(c0, c1) else FordPath()
 
 
-def damp_offset(c0, desired_curvature, speed, yaw_rate):
-  """Attenuate same-direction C0 demand when yaw exceeds the requested turn.
-
-  Inputs are finite and range-checked by the caller. The deadband avoids
-  chasing small yaw offsets. Opposing centering demand is left intact.
-  """
-  if c0*yaw_rate <= 0.:
-    return c0
-  direction = math.copysign(1., c0)
-  # An opposed plan must not amplify near-zero yaw bias into a large correction.
-  requested_yaw = max(0., direction*speed*desired_curvature)
-  excess = max(0., direction*yaw_rate-requested_yaw-EXCESS_YAW_DEADBAND)
-  reduction = OFFSET_STATION_M*EXCESS_YAW_LOOKAHEAD_S*excess
-  return direction*max(0., abs(c0)-reduction)
-
-
 class ModelActionController:
   """Only two control states: unquantized, independently slewed C0 and C1.
 
-  Freshness and engagement belong to the caller. Excess yaw attenuates the
-  offset target without model history, an integral or release modes.
+  Freshness and engagement belong to the caller. Measured yaw is checked for
+  input health only; it never changes valid offset or heading targets.
   """
   __slots__ = ('c0', 'c1')
 
@@ -107,7 +89,7 @@ class ModelActionController:
     self.c0 = self.c1 = 0.
 
   def update(self, model, desired_curvature, *, speed, dt, yaw_rate=0., active=True, valid=True):
-    # The production adapter always supplies validated measured yaw.
+    # Retain the existing input-health gate without yaw feedback.
     if not active or not valid or not _finite(dt, yaw_rate) or not .002 <= dt <= .1 or abs(yaw_rate) > 3:
       self.reset()
       return FordPath()
@@ -116,7 +98,6 @@ class ModelActionController:
       self.reset()
       return FordPath()
     c0 = float(np.clip(target.path_offset, -5.11, 5.11))
-    c0 = damp_offset(c0, desired_curvature, speed, yaw_rate)
     c1 = float(np.clip(target.path_angle, -.5, .5))
     self.c0 += float(np.clip(c0-self.c0, -4.*dt, 4.*dt))
     self.c1 += float(np.clip(c1-self.c1, -.5*dt, .5*dt))
@@ -131,7 +112,7 @@ class FordModelActionController:
   core. Its timestamps and diagnostics never affect the targets. Raw model
   geometry is checked on every cycle, even at a repeated model timestamp.
 
-  Validated host-coordinate yaw supplies stateless offset damping. Engagement
+  Host-coordinate yaw supplies diagnostics and input-health checks. Engagement
   and downstream driver arbitration still apply. PSCM status and driver torque
   are not control-law inputs.
   """
@@ -142,7 +123,7 @@ class FordModelActionController:
   def reset(self, status='inactive'):
     self.core.reset()
     self.last_time = self.last_measurement_time = self.last_model_time = None
-    self.diagnostics = {'status': status, 'hypothesis': 'model-action-c0-c1-prediction-v4',
+    self.diagnostics = {'status': status, 'hypothesis': 'model-action-c0-c1-prediction-v5',
                         'calibration_approved': CALIBRATION_APPROVED, 'command': (0., 0., 0., 0.)}
 
   def update(self, model, desired_curvature, *, yaw_rate, speed, now, measurement_time, model_time, reference_time,
@@ -173,7 +154,7 @@ class FordModelActionController:
       self.reset('invalid_path')
       return command
     self.last_time, self.last_measurement_time, self.last_model_time = now, measurement_time, model_time
-    self.diagnostics = {'status': 'active', 'hypothesis': 'model-action-c0-c1-prediction-v4',
+    self.diagnostics = {'status': 'active', 'hypothesis': 'model-action-c0-c1-prediction-v5',
                         'calibration_approved': CALIBRATION_APPROVED, 'desired_curvature': desired_curvature,
                         'yaw_rate': yaw_rate,
                         'model_age': now - model_time, 'measurement_age': now - measurement_time, 'reference_age': now - reference_time,

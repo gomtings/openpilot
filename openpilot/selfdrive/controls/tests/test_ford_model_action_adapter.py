@@ -184,9 +184,9 @@ def test_actual_controlsd_selection_limiting_publication_and_downstream_can(pipe
   expected_curvature = initial_curvature+(-1 if maneuver else 1)*.000125
   assert controls.desired_curvature == pytest.approx(expected_curvature)
   assert controls.ford_path.path_angle == pytest.approx(20.*expected_curvature)
-  expected_offset = .04 if host_yaw < .02 else .01
+  expected_offset = .04
   if initial_curvature:
-    expected_offset = .44 if maneuver and host_yaw < .02 else .36
+    expected_offset = .44 if maneuver else .36
   assert controls.ford_path.path_offset == pytest.approx(expected_offset)
   assert controller.diagnostics['yaw_rate'] == host_yaw
   assert cc.latActive and cc.actuators.curvature == 0.

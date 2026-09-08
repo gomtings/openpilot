@@ -1,9 +1,9 @@
 # Ford selected-action drive-test branch
 
 The candidate is selectable on the **Ford CAN FD F-150 Lightning** behind
-its own persistent, default-off Sunnylink toggle. Version 4 uses
-[full geometric path prediction](ford_model_action_full_prediction.md) while retaining
-[excess-yaw offset damping](ford_model_action_damping.md). Input gates are unchanged.
+its own persistent, default-off Sunnylink toggle. Version 5 retains full geometric
+path prediction and [removes yaw damping](ford_model_action_no_yaw_damping.md).
+Measured yaw is used only for input-health checks and diagnostics. Input gates are unchanged.
 `calibration_approved=false`: offline checks do not establish physical tracking,
 turn-exit behavior or closed-loop stability.
 
@@ -20,7 +20,7 @@ turn-exit behavior or closed-loop stability.
 
 The startup log event `Ford path controller selected` should report
 `FordModelActionController`. Periodic `Ford C2-free path tracking` events
-identify `hypothesis=model-action-c0-c1-prediction-v4` and report host yaw and the command tuple.
+identify `hypothesis=model-action-c0-c1-prediction-v5` and report host yaw and the command tuple.
 
 Turning the new toggle off and completing another offroad-to-onroad cycle
 restores **PSCM Coefficient Observer** if selected, otherwise the original
@@ -54,7 +54,9 @@ returns separate strings owned by the parameter handle. Regression tests
 check distinct registered keys across flags, and toggle tests check its
 persistence and backup registration using the rebuilt native library.
 
-The current validation record is `ford_model_action_full_prediction_validation.json`;
+The current validation record is `ford_model_action_no_yaw_damping_validation.json`;
+the [v5 notes](ford_model_action_no_yaw_damping.md) explain damping removal and its
+scope. `ford_model_action_full_prediction_validation.json` archives v4 checks;
 the [full-prediction notes](ford_model_action_full_prediction.md) explain cap removal
 and remaining physical uncertainty. `ford_model_action_prediction_validation.json`
 archives the capped v3 evaluation. `ford_model_action_damping_validation.json`

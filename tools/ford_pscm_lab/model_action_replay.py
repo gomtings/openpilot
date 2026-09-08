@@ -29,9 +29,10 @@ PINNED_OPENDBC = '72a775d35e54c21ff5c5798acef22016eedcc0a7'
 V1_REVISION = '5fc16abc7662020706e29f57d31a6d5e2bc1293a'
 V2_REVISION = '744a97d9bc08d8743b250eceff7c88585b5480de'
 V3_REVISION = '01f8d51c82b3e863f1012d383b5994813ef01b81'
+V4_REVISION = '7e63449749d112f096c56cb848dd289054e5f85b'
 
 
-@lru_cache(maxsize=3)
+@lru_cache(maxsize=4)
 def load_controller(commit):
   """Load exact archived Python source for offline comparisons, never production."""
   if len(commit) != 40 or any(c not in '0123456789abcdef' for c in commit):
@@ -217,7 +218,7 @@ def run(directory, output):
             'timing': 'Original controls publication timestamps proxy computation time; repeated frames and gaps retained. No identified delay.',
             'eligibility': 'Adapter checks recorded services independently; full SubMaster health is unavailable. Core uses archived validity.',
             'reference': 'Recorded controlsState.desiredCurvature, already selected/limited. These two routes have no maneuver publications.',
-            'host_yaw': 'Extract cs.yaw equals -carState.yawRate; current adapter uses it for bounded damping.',
+            'host_yaw': 'Extract cs.yaw equals -carState.yawRate; current adapter uses it for input-health checks and diagnostics only.',
             'archived_core_revision': V1_REVISION, 'archived_core_source_sha256': archived.source_sha256,
             'cohorts': cohorts, 'workspace_head': revision(root), 'opendbc_import_head': revision(dependency),
             'opendbc_import_path': str(dependency),

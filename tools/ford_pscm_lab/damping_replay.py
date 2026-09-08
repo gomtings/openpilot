@@ -16,7 +16,9 @@ import zstandard
 
 from openpilot.cereal import log
 from openpilot.selfdrive.controls.lib import ford_model_action
-from tools.ford_pscm_lab.model_action_replay import V1_REVISION, V2_REVISION, V3_REVISION, WireCheck, field_checks, load_controller, sample, verify_dependency
+from tools.ford_pscm_lab.model_action_replay import (
+  V1_REVISION, V2_REVISION, V3_REVISION, V4_REVISION, WireCheck, field_checks, load_controller, sample, verify_dependency,
+)
 
 
 DEPLOYMENT_OPENDBC = 'c21a9013700734dd20b09e05aa68329ad8cc20f9'
@@ -73,7 +75,7 @@ def run(directory, output, baseline_version='v1', candidate_version='v2', window
   if output == directory or directory in output.parents:
     raise ValueError('Output must be outside the source route directory')
   verify_dependency(DEPLOYMENT_OPENDBC)
-  revisions = {'v1': V1_REVISION, 'v2': V2_REVISION, 'v3': V3_REVISION}
+  revisions = {'v1': V1_REVISION, 'v2': V2_REVISION, 'v3': V3_REVISION, 'v4': V4_REVISION}
   baseline_source = load_controller(revisions[baseline_version])
   candidate_source = ford_model_action if candidate_version == 'current' else load_controller(revisions[candidate_version])
   streams, models, sources, t0 = extract(directory)
@@ -162,8 +164,8 @@ if __name__ == '__main__':
   parser = argparse.ArgumentParser(description=__doc__)
   parser.add_argument('rlog_directory', type=Path)
   parser.add_argument('--output', type=Path, required=True)
-  parser.add_argument('--baseline', choices=['v1', 'v2', 'v3'], default='v1')
-  parser.add_argument('--candidate', choices=['v2', 'v3', 'current'], default='v2')
+  parser.add_argument('--baseline', choices=['v1', 'v2', 'v3', 'v4'], default='v1')
+  parser.add_argument('--candidate', choices=['v2', 'v3', 'v4', 'current'], default='v2')
   parser.add_argument('--window', action='append', nargs=3, metavar=('LABEL', 'START_SECONDS', 'END_SECONDS'), default=[])
   args = parser.parse_args()
   run(args.rlog_directory, args.output, args.baseline, args.candidate, args.window)

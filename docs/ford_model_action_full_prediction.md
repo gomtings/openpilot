@@ -1,5 +1,8 @@
 # Experimental Ford full path prediction, v4
 
+This document archives v4. The [current v5 controller](ford_model_action_no_yaw_damping.md)
+retains this prediction and removes yaw damping.
+
 V4 removes the extra 15 cm / 25% limit on the geometric prediction introduced
 in [v3](ford_model_action_prediction.md). Those numbers were hand-chosen tuning
 bounds, not identified Ford response limits. The current user request is to

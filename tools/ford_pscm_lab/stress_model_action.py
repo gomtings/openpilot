@@ -81,14 +81,8 @@ def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
       future_x, future_y = (7.+distance)*math.cos(heading), offset+(7.+distance)*math.sin(heading)
       predicted = math.cos(rotation)*(future_y-ego_y)-math.sin(rotation)*(future_x-ego_x)
       target = (max(-5.11, min(5.11, predicted)), max(-.5, min(.5, max(7., speed)*desired)))
-      # Independent piecewise scalar oracle; do not call the production helper.
-      offset_target = target[0]
-      if offset_target > 0. and yaw > 0.:
-        offset_target = max(0., offset_target-1.4*max(0., yaw-max(0., speed*desired)-.02))
-      elif offset_target < 0. and yaw < 0.:
-        offset_target = min(0., offset_target+1.4*max(0., -yaw-max(0., -speed*desired)-.02))
-      assert abs(offset_target) <= abs(target[0]) and offset_target*target[0] >= 0.
-      c0 += max(-4.*dt, min(4.*dt, offset_target-c0))
+      # Independent scalar slew oracle. Valid measured yaw cannot alter demand.
+      c0 += max(-4.*dt, min(4.*dt, target[0]-c0))
       c1 += max(-.5*dt, min(.5*dt, target[1]-c1))
       step = abs(np.array([controller.c0, controller.c1])-previous)
       assert (step <= np.array(rates)*dt+1e-10).all()
@@ -122,7 +116,7 @@ def run(cycles, seed, output, opendbc_revision=PINNED_OPENDBC):
   report = {'seed': seed, 'random_cycles': cycles, 'mirrored_core_updates': cycles,
             'invalid_or_inactive_resets': resets, 'field_boundary_cases': boundary_cases,
             'float32_can_round_trips': wire.count, 'analytic_targets_scalar_slew_and_mirror_checks_pass': True,
-            'bounded_excess_yaw_damping_checked': True,
+            'valid_yaw_does_not_affect_targets_checked': True,
             'full_geometric_prediction_checked': True,
             'direct_raw_float32_packing_matches_host_output': True, 'max_continuous_step_c0_c1': max_continuous_step.tolist(),
             'calibration_approved': False, 'scope': 'Numerical construction only; no PSCM response or closed-loop performance claims.',
